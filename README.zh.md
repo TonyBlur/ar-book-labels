@@ -1,3 +1,5 @@
+**[English](README.md)** | 中文
+
 # ar-book-labels
 
 从 Excel 表格自动生成可打印的 [Accelerated Reader](https://www.renaissance.com/accelerated-reader/) 书籍标签。标签包含书名、作者、AR 等级（标准颜色编码）、积分和测验编号，适用于打印后贴在书本上。

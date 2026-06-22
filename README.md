@@ -1,3 +1,5 @@
+English | **[中文文档](README.zh.md)**
+
 # ar-book-labels
 
 Generate printable [Accelerated Reader](https://www.renaissance.com/accelerated-reader/) book labels from an Excel spreadsheet. Labels include book title, author, AR level (with standard color coding), points, and quiz number — formatted for sticker-style printing and sticking on books.
