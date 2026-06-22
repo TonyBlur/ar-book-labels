@@ -47,14 +47,16 @@ def test_split_text_lines_wrap():
 
 
 def test_split_text_lines_truncate():
-    result = split_text_lines("Journey to the Center of the Earth", 19)
+    # This text needs 3 lines at 19 chars, so line 2 gets truncated
+    result = split_text_lines("The Journey to the Center of the Earth is Great", 19)
     assert len(result) == 2
-    assert result[0] == "Journey to the"
-    assert result[1].endswith("\u2026")  # ellipsis
+    assert result[0] == "The Journey to the"
+    assert result[1].endswith("\u2026")  # ellipsis on truncated line 2
 
 
 def test_split_text_lines_no_space():
-    result = split_text_lines("SuperlongwordHere1234567890", 19)
+    # Very long single word exceeding 2 lines
+    result = split_text_lines("A" * 50, 19)
     assert len(result) == 2
     assert result[1].endswith("\u2026")
 
