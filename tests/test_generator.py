@@ -70,11 +70,11 @@ def test_build_html_empty():
 
 def test_build_html_single_book():
     book = {
-        "AR Title": "Test Book",
-        "AR Author": "Test Author",
-        "Book Level": 3.5,
-        "AR Points": 5,
-        "Quiz Number": 12345,
+        "title": "Test Book",
+        "author": "Test Author",
+        "level": 3.5,
+        "points": 5,
+        "quiz": 12345,
     }
     html = build_html([book])
     assert "Test Book" in html
@@ -86,11 +86,11 @@ def test_build_html_single_book():
 def test_build_html_multi_page():
     books = [
         {
-            "AR Title": f"Book {i}",
-            "AR Author": f"Author {i}",
-            "Book Level": 2.0,
-            "AR Points": 1,
-            "Quiz Number": i,
+            "title": f"Book {i}",
+            "author": f"Author {i}",
+            "level": 2.0,
+            "points": 1,
+            "quiz": i,
         }
         for i in range(LABELS_PER_PAGE + 1)
     ]

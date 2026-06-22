@@ -1,6 +1,6 @@
-English | **[中文文档](README.zh.md)**
-
 # ar-book-labels
+
+English | **[简体中文](README.zh.md)**
 
 Generate printable [Accelerated Reader](https://www.renaissance.com/accelerated-reader/) book labels from an Excel spreadsheet. Labels include book title, author, AR level (with standard color coding), points, and quiz number — formatted for sticker-style printing and sticking on books.
 
@@ -63,7 +63,12 @@ ar-book-labels <excel> [options]
 |--------|---------|-------------|
 | `-o, --output` | `AR_Book_Labels.html` | Output HTML file path |
 | `-s, --sheet` | `Merged` | Sheet name to read |
-| `--no-filter` | off | Include all rows (not just Match Status = Success) |
+| `--col-title` | `AR Title` | Excel column name for book title |
+| `--col-author` | `AR Author` | Excel column name for author |
+| `--col-level` | `Book Level` | Excel column name for book level |
+| `--col-points` | `AR Points` | Excel column name for AR points |
+| `--col-quiz` | `Quiz Number` | Excel column name for quiz number |
+| `--start-row` | `2` | 1-indexed row where data begins (1 = header row) |
 | `--scale` | `3` | Display scale factor for screen preview |
 | `--template` | — | Copy the reference Excel template to cwd and exit |
 | `-V, --version` | — | Show version and exit |
@@ -77,8 +82,11 @@ ar-book-labels my_books.xlsx
 # Custom output path and sheet name
 ar-book-labels my_books.xlsx -o output/labels.html -s "Book Data"
 
-# Include all rows (ignore Match Status)
-ar-book-labels my_books.xlsx --no-filter
+# Custom column names (if your Excel uses different headers)
+ar-book-labels my_books.xlsx --col-title "Title" --col-author "Author Name" --col-level "Level"
+
+# Custom start row (e.g. data starts on row 3)
+ar-book-labels my_books.xlsx --start-row 3
 
 # Copy the template for reference
 ar-book-labels --template
@@ -86,16 +94,17 @@ ar-book-labels --template
 
 ## Excel Format
 
-The spreadsheet must contain these columns (column names are case-sensitive):
+The spreadsheet must contain these columns (default names shown; use `--col-*` options to map custom names):
 
-| Column | Type | Required | Description |
-|--------|------|----------|-------------|
-| `AR Title` | text | Yes | Book title |
-| `AR Author` | text | Yes | Author name |
-| `Book Level` | number | Yes | AR ATOS level (e.g. 5.1) |
-| `AR Points` | number | Yes | Points value |
-| `Quiz Number` | number/text | Yes | Quiz ID |
-| `Match Status` | text | No | Set to `Success` to include (unless `--no-filter`) |
+| Internal Key | Default Column | Type | Description |
+|--------------|----------------|------|-------------|
+| `title` | `AR Title` | text | Book title |
+| `author` | `AR Author` | text | Author name |
+| `level` | `Book Level` | number | AR ATOS level (e.g. 5.1) |
+| `points` | `AR Points` | number | Points value |
+| `quiz` | `Quiz Number` | number/text | Quiz ID |
+
+Rows with missing required fields are skipped with a warning printed to stderr.
 
 Use `ar-book-labels --template` to get a pre-formatted template with sample data.
 

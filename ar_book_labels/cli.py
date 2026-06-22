@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from ar_book_labels import __version__
-from ar_book_labels.generator import generate
+from ar_book_labels.generator import generate, DEFAULT_COLUMNS
 
 
 def main():
@@ -23,8 +23,28 @@ def main():
         help="Sheet name to read (default: Merged)",
     )
     parser.add_argument(
-        "--no-filter", action="store_true",
-        help="Include all rows, not just Match Status = Success",
+        "--col-title", default=DEFAULT_COLUMNS["title"],
+        help=f"Excel column name for book title (default: {DEFAULT_COLUMNS['title']})",
+    )
+    parser.add_argument(
+        "--col-author", default=DEFAULT_COLUMNS["author"],
+        help=f"Excel column name for author (default: {DEFAULT_COLUMNS['author']})",
+    )
+    parser.add_argument(
+        "--col-level", default=DEFAULT_COLUMNS["level"],
+        help=f"Excel column name for book level (default: {DEFAULT_COLUMNS['level']})",
+    )
+    parser.add_argument(
+        "--col-points", default=DEFAULT_COLUMNS["points"],
+        help=f"Excel column name for AR points (default: {DEFAULT_COLUMNS['points']})",
+    )
+    parser.add_argument(
+        "--col-quiz", default=DEFAULT_COLUMNS["quiz"],
+        help=f"Excel column name for quiz number (default: {DEFAULT_COLUMNS['quiz']})",
+    )
+    parser.add_argument(
+        "--start-row", type=int, default=2,
+        help="1-indexed row number where data begins (default: 2, i.e. row 1 is header)",
     )
     parser.add_argument(
         "--scale", type=int, default=3,
@@ -53,17 +73,34 @@ def main():
 
     output_path = Path(args.output)
 
+    # Build column mapping from CLI args
+    column_mapping = {
+        "title": args.col_title,
+        "author": args.col_author,
+        "level": args.col_level,
+        "points": args.col_points,
+        "quiz": args.col_quiz,
+    }
+
     try:
-        n_books, n_pages = generate(
+        n_books, n_pages, warnings = generate(
             excel_path=str(excel_path),
             output_path=str(output_path),
             sheet_name=args.sheet,
-            filter_success=not args.no_filter,
+            column_mapping=column_mapping,
+            start_row=args.start_row,
             display_scale=args.scale,
         )
     except KeyError as e:
         print(f"Error: sheet not found: {e}", file=sys.stderr)
         sys.exit(1)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # Print warnings to stderr
+    for w in warnings:
+        print(f"Warning: {w}", file=sys.stderr)
 
     if n_books == 0:
         print("Warning: no books found in the spreadsheet.", file=sys.stderr)

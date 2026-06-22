@@ -30,6 +30,16 @@ LABELS_PER_PAGE = len(COLS_X) * len(ROWS_Y)  # 44
 
 FONT = "'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif"
 
+# Default column names (matching the template)
+DEFAULT_COLUMNS = {
+    "title": "AR Title",
+    "author": "AR Author",
+    "level": "Book Level",
+    "points": "AR Points",
+    "quiz": "Quiz Number",
+}
+REQUIRED_FIELDS = ["title", "author", "level", "points", "quiz"]
+
 # Circle position
 CX, CY, CR = 12.5, 24, 8
 # Right-side content
@@ -76,39 +86,82 @@ def split_text_lines(text, max_chars_per_line):
     return [line1, remainder[:max_chars_per_line - 1].rstrip() + "\u2026"]
 
 
-def read_books(excel_path, sheet_name, filter_success=True):
-    """Read book data from an Excel file."""
+def read_books(excel_path, sheet_name, columns=None, start_row=2):
+    """Read book data from an Excel file.
+
+    Args:
+        excel_path: Path to the .xlsx file.
+        sheet_name: Name of the sheet to read.
+        columns: Dict mapping internal keys to Excel column names.
+                 Missing keys fall back to DEFAULT_COLUMNS.
+        start_row: 1-indexed row number where data begins (1 = header row).
+
+    Returns:
+        tuple: (books_list, warnings_list)
+    """
+    cols = {**DEFAULT_COLUMNS, **(columns or {})}
     wb = load_workbook(excel_path, read_only=True, data_only=True)
     ws = wb[sheet_name]
     rows = list(ws.iter_rows(values_only=True))
-    headers = [h for h in rows[0] if h is not None]
+    headers = [str(h) for h in rows[0] if h is not None]
+
+    # Check that required columns exist in the sheet
+    missing_cols = []
+    for key in REQUIRED_FIELDS:
+        if cols[key] not in headers:
+            missing_cols.append(f"{key} ('{cols[key]}')")
+    if missing_cols:
+        wb.close()
+        raise ValueError(
+            f"Columns not found in sheet '{sheet_name}': {', '.join(missing_cols)}.\n"
+            f"Available columns: {', '.join(headers)}\n"
+            f"Use --col-* options to map your column names."
+        )
+
     books = []
-    for row in rows[1:]:
+    warnings = []
+    data_rows = rows[start_row - 1:]  # start_row is 1-indexed
+    for i, row in enumerate(data_rows):
+        row_num = start_row + i
         vals = list(row[:len(headers)])
         if all(v is None for v in vals):
             continue
-        book = dict(zip(headers, vals))
-        if filter_success and book.get("Match Status") != "Success":
+        raw = dict(zip(headers, vals))
+
+        # Validate required fields
+        missing = []
+        for key in REQUIRED_FIELDS:
+            val = raw.get(cols[key])
+            if val is None or (isinstance(val, str) and not val.strip()):
+                missing.append(cols[key])
+        if missing:
+            warnings.append(f"Row {row_num}: skipped — missing: {', '.join(missing)}")
             continue
-        if book.get("AR Title") is None:
-            continue
-        books.append(book)
+
+        books.append({
+            "title": raw[cols["title"]],
+            "author": raw[cols["author"]],
+            "level": raw[cols["level"]],
+            "points": raw[cols["points"]],
+            "quiz": raw[cols["quiz"]],
+        })
+
     wb.close()
-    return books
+    return books, warnings
 
 
 def _generate_label_svg(book):
     """Generate SVG markup for a single label."""
-    title_raw = book.get("AR Title", "") or ""
-    level = book.get("Book Level", 0)
-    points = str(book.get("AR Points", ""))
-    quiz = str(book.get("Quiz Number", ""))
+    title_raw = book.get("title", "") or ""
+    level = book.get("level", 0)
+    points = str(book.get("points", ""))
+    quiz = str(book.get("quiz", ""))
 
     level_str = f"{float(level):.1f}" if isinstance(level, (int, float)) else str(level)
     badge_color = get_level_color(level)
     badge_text = get_badge_text_color(badge_color)
 
-    author_raw = str(book.get("AR Author", "") or "").strip()
+    author_raw = str(book.get("author", "") or "").strip()
     author_display = html_module.escape(
         author_raw if len(author_raw) <= 23 else author_raw[:22].rstrip() + "\u2026"
     )
@@ -190,22 +243,32 @@ def build_html(books, display_scale=3):
 
 
 def generate(excel_path, output_path, sheet_name="Merged",
-             filter_success=True, display_scale=3):
+             column_mapping=None, start_row=2, display_scale=3):
     """High-level entry point: read Excel, generate labels, write HTML.
 
+    Args:
+        excel_path: Path to the .xlsx file.
+        output_path: Output HTML file path.
+        sheet_name: Sheet name to read.
+        column_mapping: Optional dict mapping internal keys to Excel column names.
+        start_row: 1-indexed row number where data begins.
+        display_scale: Scale factor for screen preview.
+
     Returns:
-        tuple: (number_of_books, number_of_pages)
+        tuple: (number_of_books, number_of_pages, warnings_list)
     """
-    books = read_books(excel_path, sheet_name, filter_success=filter_success)
+    books, warnings = read_books(
+        excel_path, sheet_name, columns=column_mapping, start_row=start_row
+    )
     if not books:
         html = build_html([], display_scale)
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(html)
-        return 0, 0
+        return 0, 0, warnings
 
     html = build_html(books, display_scale)
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(html)
 
     n_pages = (len(books) + LABELS_PER_PAGE - 1) // LABELS_PER_PAGE
-    return len(books), n_pages
+    return len(books), n_pages, warnings

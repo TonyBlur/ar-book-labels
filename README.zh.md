@@ -1,6 +1,6 @@
-**[English](README.md)** | 中文
-
 # ar-book-labels
+
+**[English](README.md)** | 简体中文
 
 从 Excel 表格自动生成可打印的 [Accelerated Reader](https://www.renaissance.com/accelerated-reader/) 书籍标签。标签包含书名、作者、AR 等级（标准颜色编码）、积分和测验编号，适用于打印后贴在书本上。
 
@@ -63,7 +63,12 @@ ar-book-labels <excel文件> [选项]
 |------|--------|------|
 | `-o, --output` | `AR_Book_Labels.html` | 输出 HTML 文件路径 |
 | `-s, --sheet` | `Merged` | 要读取的工作表名称 |
-| `--no-filter` | 关闭 | 包含所有行（不仅限 Match Status = Success） |
+| `--col-title` | `AR Title` | Excel 中书名对应的列名 |
+| `--col-author` | `AR Author` | Excel 中作者对应的列名 |
+| `--col-level` | `Book Level` | Excel 中等级对应的列名 |
+| `--col-points` | `AR Points` | Excel 中积分对应的列名 |
+| `--col-quiz` | `Quiz Number` | Excel 中测验编号对应的列名 |
+| `--start-row` | `2` | 数据开始的行号（1 = 表头行） |
 | `--scale` | `3` | 屏幕预览的缩放倍数 |
 | `--template` | — | 将参考 Excel 模板复制到当前目录并退出 |
 | `-V, --version` | — | 显示版本号并退出 |
@@ -77,8 +82,11 @@ ar-book-labels my_books.xlsx
 # 自定义输出路径和工作表名
 ar-book-labels my_books.xlsx -o output/labels.html -s "图书数据"
 
-# 包含所有行（忽略 Match Status 筛选）
-ar-book-labels my_books.xlsx --no-filter
+# 自定义列名（如果你的 Excel 使用不同的表头）
+ar-book-labels my_books.xlsx --col-title "书名" --col-author "作者" --col-level "等级"
+
+# 自定义起始行（如数据从第 3 行开始）
+ar-book-labels my_books.xlsx --start-row 3
 
 # 复制参考模板
 ar-book-labels --template
@@ -86,16 +94,17 @@ ar-book-labels --template
 
 ## Excel 格式要求
 
-表格必须包含以下列（列名区分大小写）：
+表格必须包含以下列（默认列名如下；可通过 `--col-*` 选项自定义列名映射）：
 
-| 列名 | 类型 | 必需 | 说明 |
-|------|------|------|------|
-| `AR Title` | 文本 | 是 | 书名 |
-| `AR Author` | 文本 | 是 | 作者名 |
-| `Book Level` | 数字 | 是 | AR ATOS 等级（如 5.1） |
-| `AR Points` | 数字 | 是 | 积分值 |
-| `Quiz Number` | 数字/文本 | 是 | 测验编号 |
-| `Match Status` | 文本 | 否 | 设为 `Success` 以包含该行（除非使用 `--no-filter`） |
+| 内部字段 | 默认列名 | 类型 | 说明 |
+|----------|----------|------|------|
+| `title` | `AR Title` | 文本 | 书名 |
+| `author` | `AR Author` | 文本 | 作者名 |
+| `level` | `Book Level` | 数字 | AR ATOS 等级（如 5.1） |
+| `points` | `AR Points` | 数字 | 积分值 |
+| `quiz` | `Quiz Number` | 数字/文本 | 测验编号 |
+
+缺少必填字段的行将被跳过，并在终端输出警告信息。
 
 使用 `ar-book-labels --template` 获取预格式化的模板。
 
