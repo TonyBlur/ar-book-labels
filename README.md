@@ -7,7 +7,7 @@ Generate printable [Accelerated Reader](https://www.renaissance.com/accelerated-
 ## Features
 
 - **Standard AR color coding**: 12 color ranges from yellow (0.1–1.5) to brown (6.6+)
-- **Print-ready HTML output**: 4 columns x 11 rows = 44 labels per page, `@page` CSS for direct printing
+- **Print-ready HTML output**: 4 columns x 9 rows = 36 labels per page, A4 size, `@page` CSS for direct printing
 - **Smart text truncation**: Titles wrap to 2 lines with ellipsis; authors on 1 line
 - **Author-first layout**: Author name appears above title for easy shelf sorting
 - **Screen preview**: SVG viewBox scaling for crisp browser preview
@@ -45,6 +45,8 @@ ar-book-labels books.xlsx -o labels.html
 
 3. **Open** `labels.html` in a browser to preview, then print (Ctrl/Cmd+P).
 
+   > **Print tip**: In the browser print dialog, choose **"Actual size"** (or **"No margins"** / **"None"** for margins) to prevent the browser from auto-adding page margins that shift label positions. The HTML already declares `@page { margin: 0 }`; adding browser margins on top causes misalignment.
+
 ## CLI Usage
 
 ```
@@ -62,14 +64,15 @@ ar-book-labels <excel> [options]
 | Option | Default | Description |
 |--------|---------|-------------|
 | `-o, --output` | `AR_Book_Labels.html` | Output HTML file path |
-| `-s, --sheet` | `Merged` | Sheet name to read |
+| `-s, --sheet` | first sheet | Sheet name to read (defaults to first sheet) |
 | `--col-title` | `AR Title` | Excel column name for book title |
 | `--col-author` | `AR Author` | Excel column name for author |
 | `--col-level` | `Book Level` | Excel column name for book level |
 | `--col-points` | `AR Points` | Excel column name for AR points |
 | `--col-quiz` | `Quiz Number` | Excel column name for quiz number |
 | `--start-row` | `2` | 1-indexed row where data begins (1 = header row) |
-| `--scale` | `3` | Display scale factor for screen preview |
+| `--scale` | `1` | Display scale factor for screen preview |
+| `--bw` | — | Black-and-white mode: white circle with thin black outline, black level number |
 | `--template` | — | Copy the reference Excel template to cwd and exit |
 | `-V, --version` | — | Show version and exit |
 
@@ -90,6 +93,9 @@ ar-book-labels my_books.xlsx --start-row 3
 
 # Copy the template for reference
 ar-book-labels --template
+
+# Black-and-white mode for economical printing
+ar-book-labels my_books.xlsx --bw
 ```
 
 ## Excel Format

@@ -7,7 +7,7 @@
 ## 功能特点
 
 - **AR 标准颜色编码**：12 个颜色区间，从黄色（0.1–1.5）到棕色（6.6+）
-- **打印就绪 HTML 输出**：每页 4 列 x 11 行 = 44 个标签，内置 `@page` CSS 可直接打印
+- **打印就绪 HTML 输出**：每页 4 列 x 9 行 = 36 个标签，A4 尺寸，内置 `@page` CSS 可直接打印
 - **智能文本截断**：书名支持 2 行换行 + 省略号；作者名单行显示
 - **作者优先布局**：作者名在书名上方，方便按作者排序整理书籍
 - **屏幕预览**：SVG viewBox 缩放，浏览器中清晰预览
@@ -45,6 +45,8 @@ ar-book-labels books.xlsx -o labels.html
 
 3. **打开** `labels.html` 在浏览器中预览，然后打印（Ctrl/Cmd+P）。
 
+   > **打印提示**：在浏览器打印对话框中，选择**"实际尺寸"**（或页边距选择**"无"**/**"默认"**），避免浏览器自动添加页边距导致标签位置偏移。HTML 已声明 `@page { margin: 0 }`，浏览器在此基础上再加页边距会导致错位。
+
 ## 命令行用法
 
 ```
@@ -62,14 +64,15 @@ ar-book-labels <excel文件> [选项]
 | 选项 | 默认值 | 说明 |
 |------|--------|------|
 | `-o, --output` | `AR_Book_Labels.html` | 输出 HTML 文件路径 |
-| `-s, --sheet` | `Merged` | 要读取的工作表名称 |
+| `-s, --sheet` | 第一个工作表 | 要读取的工作表名称（默认第一个） |
 | `--col-title` | `AR Title` | Excel 中书名对应的列名 |
 | `--col-author` | `AR Author` | Excel 中作者对应的列名 |
 | `--col-level` | `Book Level` | Excel 中等级对应的列名 |
 | `--col-points` | `AR Points` | Excel 中积分对应的列名 |
 | `--col-quiz` | `Quiz Number` | Excel 中测验编号对应的列名 |
 | `--start-row` | `2` | 数据开始的行号（1 = 表头行） |
-| `--scale` | `3` | 屏幕预览的缩放倍数 |
+| `--scale` | `1` | 屏幕预览的缩放倍数 |
+| `--bw` | — | 黑白模式：白色圆圈+细黑描边，等级数字黑色 |
 | `--template` | — | 将参考 Excel 模板复制到当前目录并退出 |
 | `-V, --version` | — | 显示版本号并退出 |
 
@@ -90,6 +93,9 @@ ar-book-labels my_books.xlsx --start-row 3
 
 # 复制参考模板
 ar-book-labels --template
+
+# 黑白模式（省墨打印）
+ar-book-labels my_books.xlsx --bw
 ```
 
 ## Excel 格式要求

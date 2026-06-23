@@ -13,3 +13,4 @@ venv/
 .mypy_cache/
 ruff.toml
 .tox/
+.workbuddy/

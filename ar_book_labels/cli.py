@@ -19,8 +19,8 @@ def main():
         help="Output HTML file path (default: AR_Book_Labels.html)",
     )
     parser.add_argument(
-        "-s", "--sheet", default="Merged",
-        help="Sheet name to read (default: Merged)",
+        "-s", "--sheet", default=None,
+        help="Sheet name to read (default: first sheet in the workbook)",
     )
     parser.add_argument(
         "--col-title", default=DEFAULT_COLUMNS["title"],
@@ -47,8 +47,12 @@ def main():
         help="1-indexed row number where data begins (default: 2, i.e. row 1 is header)",
     )
     parser.add_argument(
-        "--scale", type=int, default=3,
-        help="Display scale factor for screen preview (default: 3)",
+        "--scale", type=int, default=1,
+        help="Display scale factor for screen preview (default: 1)",
+    )
+    parser.add_argument(
+        "--bw", action="store_true",
+        help="Black-and-white mode: white circle with thin black outline, black level number",
     )
     parser.add_argument(
         "--template", action="store_true",
@@ -90,6 +94,7 @@ def main():
             column_mapping=column_mapping,
             start_row=args.start_row,
             display_scale=args.scale,
+            bw=args.bw,
         )
     except KeyError as e:
         print(f"Error: sheet not found: {e}", file=sys.stderr)
