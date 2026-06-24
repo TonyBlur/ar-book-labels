@@ -73,6 +73,7 @@ ar-book-labels <excel> [options]
 | `--start-row` | `2` | 1-indexed row where data begins (1 = header row) |
 | `--scale` | `1` | Display scale factor for screen preview |
 | `--bw` | — | Black-and-white mode: white circle with thin black outline, black level number |
+| `--with-border` | — | Add a thin printable border around each label for manual cutting |
 | `--template` | — | Copy the reference Excel template to cwd and exit |
 | `-V, --version` | — | Show version and exit |
 
@@ -90,6 +91,12 @@ ar-book-labels my_books.xlsx --col-title "Title" --col-author "Author Name" --co
 
 # Custom start row (e.g. data starts on row 3)
 ar-book-labels my_books.xlsx --start-row 3
+
+# With cutting-guide border (for manual label cutting)
+ar-book-labels my_books.xlsx --with-border
+
+# Black-and-white mode with border (ink-saving, for cutting)
+ar-book-labels my_books.xlsx --bw --with-border
 
 # Copy the template for reference
 ar-book-labels --template

@@ -73,6 +73,7 @@ ar-book-labels <excel文件> [选项]
 | `--start-row` | `2` | 数据开始的行号（1 = 表头行） |
 | `--scale` | `1` | 屏幕预览的缩放倍数 |
 | `--bw` | — | 黑白模式：白色圆圈+细黑描边，等级数字黑色 |
+| `--with-border` | — | 为每个标签添加细边框（打印可见），便于手动裁剪 |
 | `--template` | — | 将参考 Excel 模板复制到当前目录并退出 |
 | `-V, --version` | — | 显示版本号并退出 |
 
@@ -90,6 +91,12 @@ ar-book-labels my_books.xlsx --col-title "书名" --col-author "作者" --col-le
 
 # 自定义起始行（如数据从第 3 行开始）
 ar-book-labels my_books.xlsx --start-row 3
+
+# 带裁剪边框（便于手动裁剪标签）
+ar-book-labels my_books.xlsx --with-border
+
+# 黑白模式 + 边框（省墨打印，便于裁剪）
+ar-book-labels my_books.xlsx --bw --with-border
 
 # 复制参考模板
 ar-book-labels --template

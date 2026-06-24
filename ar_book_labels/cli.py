@@ -55,6 +55,10 @@ def main():
         help="Black-and-white mode: white circle with thin black outline, black level number",
     )
     parser.add_argument(
+        "--with-border", action="store_true",
+        help="Add a thin printable border around each label for manual cutting",
+    )
+    parser.add_argument(
         "--template", action="store_true",
         help="Copy the reference Excel template to the current directory and exit",
     )
@@ -95,6 +99,7 @@ def main():
             start_row=args.start_row,
             display_scale=args.scale,
             bw=args.bw,
+            with_border=args.with_border,
         )
     except KeyError as e:
         print(f"Error: sheet not found: {e}", file=sys.stderr)

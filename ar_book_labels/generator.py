@@ -158,7 +158,7 @@ def read_books(excel_path, sheet_name, columns=None, start_row=2):
     return books, warnings
 
 
-def _generate_label_svg(book, bw=False):
+def _generate_label_svg(book, bw=False, with_border=False):
     """Generate SVG markup for a single label.
 
     Args:
@@ -166,6 +166,8 @@ def _generate_label_svg(book, bw=False):
         bw: When True, render in black-and-white mode — white circle with a
             thin black outline and a black level number. When False (default),
             use the standard AR color-coded badge.
+        with_border: When True, add a thin printable border around the label
+            for manual cutting guides.
 
     Returns:
         SVG markup string for the label (a ``<g>`` element).
@@ -194,6 +196,8 @@ def _generate_label_svg(book, bw=False):
 
     p = []
     p.append(f'<rect class="label-outline" x="0" y="0" width="{LABEL_W}" height="{LABEL_H}" rx="{LABEL_RX}" fill="none"/>')
+    if with_border:
+        p.append(f'<rect class="label-border" x="0" y="0" width="{LABEL_W}" height="{LABEL_H}" rx="{LABEL_RX}" fill="none"/>')
     p.append(f'<circle cx="{CX}" cy="{CY}" r="{CR}" fill="{circle_fill}"{circle_stroke}/>')
     p.append(f'<text x="{CX}" y="{TOP_Y}" text-anchor="middle" dominant-baseline="hanging" fill="black" font-family="{FONT}" font-size="4.5" font-weight="700" letter-spacing="0.3">ATOS</text>')
     p.append(f'<text x="{CX}" y="{CY + 2.5}" text-anchor="middle" fill="{level_fill}" font-family="{FONT}" font-size="5.5" font-weight="700">{level_str}</text>')
@@ -208,7 +212,7 @@ def _generate_label_svg(book, bw=False):
     return "<g>\n  " + "\n  ".join(p) + "\n</g>"
 
 
-def build_html(books, display_scale=1, bw=False):
+def build_html(books, display_scale=1, bw=False, with_border=False):
     """Build a multi-page HTML document with SVG labels.
 
     Page dimensions are in millimetres (A4 portrait: 210mm x 297mm) so that
@@ -220,6 +224,8 @@ def build_html(books, display_scale=1, bw=False):
         books: List of book dicts.
         display_scale: Scale factor for screen preview.
         bw: When True, render labels in black-and-white mode.
+        with_border: When True, add a thin printable cutting-guide border
+            around each label.
     """
     pages = []
     for i in range(0, len(books), LABELS_PER_PAGE):
@@ -235,7 +241,7 @@ def build_html(books, display_scale=1, bw=False):
             col = i % len(COLS_X)
             x = COLS_X[col]
             y = ROWS_Y[row]
-            labels_svg += f'<g transform="translate({x},{y})">{_generate_label_svg(book, bw=bw)}</g>\n'
+            labels_svg += f'<g transform="translate({x},{y})">{_generate_label_svg(book, bw=bw, with_border=with_border)}</g>\n'
 
         pb = ' style="page-break-after: always;"' if page_idx < len(pages) - 1 else ''
         page_blocks.append(f'''<div class="page"{pb}>
@@ -275,6 +281,11 @@ def build_html(books, display_scale=1, bw=False):
     stroke-width: 0.2;
     stroke-dasharray: 1.2, 1.2;
   }}
+  .label-border {{
+    fill: none;
+    stroke: #000000;
+    stroke-width: 0.15;
+  }}
   @media print {{
     body {{ margin: 0; background: white; }}
     .page {{
@@ -294,7 +305,8 @@ def build_html(books, display_scale=1, bw=False):
 
 
 def generate(excel_path, output_path, sheet_name=None,
-             column_mapping=None, start_row=2, display_scale=1, bw=False):
+             column_mapping=None, start_row=2, display_scale=1, bw=False,
+             with_border=False):
     """High-level entry point: read Excel, generate labels, write HTML.
 
     Args:
@@ -306,6 +318,8 @@ def generate(excel_path, output_path, sheet_name=None,
         display_scale: Scale factor for screen preview.
         bw: When True, render labels in black-and-white mode (white circle,
             thin black outline, black level number).
+        with_border: When True, add a thin printable cutting-guide border
+            around each label.
 
     Returns:
         tuple: (number_of_books, number_of_pages, warnings_list)
@@ -314,12 +328,12 @@ def generate(excel_path, output_path, sheet_name=None,
         excel_path, sheet_name, columns=column_mapping, start_row=start_row
     )
     if not books:
-        html = build_html([], display_scale, bw=bw)
+        html = build_html([], display_scale, bw=bw, with_border=with_border)
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(html)
         return 0, 0, warnings
 
-    html = build_html(books, display_scale, bw=bw)
+    html = build_html(books, display_scale, bw=bw, with_border=with_border)
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(html)
 
