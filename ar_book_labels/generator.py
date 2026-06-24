@@ -2,11 +2,14 @@
 
 import html as html_module
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 from openpyxl import load_workbook
 
+from ar_book_labels.layout import Layout
+
 # ==================== AR Level Standard Colors ====================
-LEVEL_COLORS = [
+LEVEL_COLORS: List[Tuple[float, float, str]] = [
     (0.1, 1.5, "#FFD700"),   # yellow
     (1.6, 2.0, "#2E8B57"),   # green
     (2.1, 2.5, "#00008B"),   # dark blue
@@ -22,7 +25,9 @@ LEVEL_COLORS = [
 ]
 
 # ==================== SVG Layout Constants ====================
-# Page (A4 portrait, units in mm)
+# These are the *original* hardcoded values kept for reference and for any
+# code that still imports them directly.  The canonical values now live in
+# the ``Layout`` dataclass (with identical defaults for 50×30 mm labels).
 PAGE_W = 210
 PAGE_H = 297
 
@@ -57,23 +62,41 @@ POINTS_Y = 17.2                # Points row (下移2)
 QUIZ_Y = 21.7                  # Quiz row (下移2); bottom ≈ 24.5 = circle bottom
 
 
-def get_level_color(level):
+def get_level_color(level: Any, colors: Optional[List[Tuple[float, float, str]]] = None) -> str:
+    """Return the hex colour for a given AR level.
+
+    Parameters
+    ----------
+    level:
+        Numeric AR level (int, float, or string that can be cast to float).
+    colors:
+        Optional list of ``(low, high, hex)`` tuples.  When ``None`` the
+        module-level ``LEVEL_COLORS`` constant is used.
+
+    Returns
+    -------
+    str
+        Hex colour string (e.g. ``"#FFD700"``), or ``"#999999"`` if the
+        level is out of range or not numeric.
+    """
+    colors_to_use = colors if colors is not None else LEVEL_COLORS
     try:
         level = float(level)
     except (TypeError, ValueError):
         return "#999999"
-    for low, high, color in LEVEL_COLORS:
+    for low, high, color in colors_to_use:
         if low <= level <= high:
             return color
     return "#999999"
 
 
-def get_badge_text_color(bg_color):
+def get_badge_text_color(bg_color: str) -> str:
+    """Return black or white text colour for readability on *bg_color*."""
     light = {"#FFD700", "#39FF14"}
     return "#000000" if bg_color in light else "#FFFFFF"
 
 
-def split_text_lines(text, max_chars_per_line):
+def split_text_lines(text: str, max_chars_per_line: int) -> List[str]:
     """Wrap text into at most 2 lines; truncate with ellipsis only if >2 lines."""
     text = str(text).strip()
     if not text:
@@ -90,7 +113,12 @@ def split_text_lines(text, max_chars_per_line):
     return [line1, remainder[:max_chars_per_line - 1].rstrip() + "\u2026"]
 
 
-def read_books(excel_path, sheet_name, columns=None, start_row=2):
+def read_books(
+    excel_path: str,
+    sheet_name: Optional[str],
+    columns: Optional[Dict[str, str]] = None,
+    start_row: int = 2,
+) -> Tuple[List[Dict[str, Any]], List[str]]:
     """Read book data from an Excel file.
 
     Args:
@@ -158,7 +186,12 @@ def read_books(excel_path, sheet_name, columns=None, start_row=2):
     return books, warnings
 
 
-def _generate_label_svg(book, bw=False, with_border=False):
+def _generate_label_svg(
+    book: Dict[str, Any],
+    bw: bool = False,
+    with_border: bool = False,
+    layout: Optional[Layout] = None,
+) -> str:
     """Generate SVG markup for a single label.
 
     Args:
@@ -168,17 +201,22 @@ def _generate_label_svg(book, bw=False, with_border=False):
             use the standard AR color-coded badge.
         with_border: When True, add a thin printable border around the label
             for manual cutting guides.
+        layout: Optional :class:`Layout` instance.  When ``None`` a default
+            50×30 mm layout is used (backward-compatible behaviour).
 
     Returns:
         SVG markup string for the label (a ``<g>`` element).
     """
+    if layout is None:
+        layout = Layout()
+
     title_raw = book.get("title", "") or ""
     level = book.get("level", 0)
     points = str(book.get("points", ""))
     quiz = str(book.get("quiz", ""))
 
     level_str = f"{float(level):.1f}" if isinstance(level, (int, float)) else str(level)
-    badge_color = get_level_color(level)
+    badge_color = get_level_color(level, colors=layout.level_colors)
     badge_text = get_badge_text_color(badge_color)
 
     # bw mode overrides the badge fill/outline and the level number color.
@@ -190,29 +228,82 @@ def _generate_label_svg(book, bw=False, with_border=False):
     author_display = html_module.escape(
         author_raw if len(author_raw) <= 17 else author_raw[:16].rstrip() + "\u2026"
     )
-    title_lines = [html_module.escape(l) for l in split_text_lines(title_raw, 14)]
-    title_start = TOP_Y + AUTHOR_LH + 0.5
-    title_ys = [title_start + i * TITLE_LH for i in range(len(title_lines))]
+    title_lines = [html_module.escape(ln) for ln in split_text_lines(title_raw, 14)]
+    title_start = layout.top_y + layout.author_lh + 0.5
+    title_ys = [title_start + i * layout.title_lh for i in range(len(title_lines))]
 
-    p = []
-    p.append(f'<rect class="label-outline" x="0" y="0" width="{LABEL_W}" height="{LABEL_H}" rx="{LABEL_RX}" fill="none"/>')
+    # Determine max chars per line based on available width
+    available_text_w = layout.label_w - layout.rx - 3  # 3mm right padding
+    max_chars = max(10, int(available_text_w / 2.0))  # rough estimate
+
+    p: List[str] = []
+    p.append(
+        f'<rect class="label-outline" x="0" y="0" '
+        f'width="{layout.label_w}" height="{layout.label_h}" '
+        f'rx="{layout.label_rx}" fill="none"/>'
+    )
     if with_border:
-        p.append(f'<rect class="label-border" x="0" y="0" width="{LABEL_W}" height="{LABEL_H}" rx="{LABEL_RX}" fill="none"/>')
-    p.append(f'<circle cx="{CX}" cy="{CY}" r="{CR}" fill="{circle_fill}"{circle_stroke}/>')
-    p.append(f'<text x="{CX}" y="{TOP_Y}" text-anchor="middle" dominant-baseline="hanging" fill="black" font-family="{FONT}" font-size="4.5" font-weight="700" letter-spacing="0.3">ATOS</text>')
-    p.append(f'<text x="{CX}" y="{CY + 2.5}" text-anchor="middle" fill="{level_fill}" font-family="{FONT}" font-size="5.5" font-weight="700">{level_str}</text>')
-    p.append(f'<text x="{RX}" y="{TOP_Y}" dominant-baseline="hanging" fill="#555" font-family="{FONT}" font-size="2.6">{author_display}</text>')
-    for y in title_ys:
-        p.append(f'<text x="{RX}" y="{y}" dominant-baseline="hanging" fill="black" font-family="{FONT}" font-size="3.2" font-weight="600">{title_lines[title_ys.index(y)]}</text>')
-    p.append(f'<text x="{RX}" y="{POINTS_Y}" dominant-baseline="hanging" fill="#666" font-family="{FONT}" font-size="2.5">Points:</text>')
-    p.append(f'<text x="{VX}" y="{POINTS_Y}" text-anchor="middle" dominant-baseline="hanging" fill="black" font-family="{FONT}" font-size="2.8" font-weight="700">{points}</text>')
-    p.append(f'<text x="{RX}" y="{QUIZ_Y}" dominant-baseline="hanging" fill="#666" font-family="{FONT}" font-size="2.5">Quiz:</text>')
-    p.append(f'<text x="{VX}" y="{QUIZ_Y}" text-anchor="middle" dominant-baseline="hanging" fill="black" font-family="{FONT}" font-size="2.8" font-weight="700">{quiz}</text>')
+        p.append(
+            f'<rect class="label-border" x="0" y="0" '
+            f'width="{layout.label_w}" height="{layout.label_h}" '
+            f'rx="{layout.label_rx}" fill="none"/>'
+        )
+    p.append(
+        f'<circle cx="{layout.cx}" cy="{layout.cy}" r="{layout.cr}" '
+        f'fill="{circle_fill}"{circle_stroke}/>'
+    )
+    p.append(
+        f'<text x="{layout.cx}" y="{layout.top_y}" text-anchor="middle" '
+        f'dominant-baseline="hanging" fill="black" font-family="{layout.font_family}" '
+        f'font-size="4.5" font-weight="700" letter-spacing="0.3">ATOS</text>'
+    )
+    p.append(
+        f'<text x="{layout.cx}" y="{layout.cy + 2.5}" text-anchor="middle" '
+        f'fill="{level_fill}" font-family="{layout.font_family}" '
+        f'font-size="5.5" font-weight="700">{level_str}</text>'
+    )
+    p.append(
+        f'<text x="{layout.rx}" y="{layout.top_y}" dominant-baseline="hanging" '
+        f'fill="#555" font-family="{layout.font_family}" '
+        f'font-size="2.6">{author_display}</text>'
+    )
+    for idx, y in enumerate(title_ys):
+        p.append(
+            f'<text x="{layout.rx}" y="{y}" dominant-baseline="hanging" '
+            f'fill="black" font-family="{layout.font_family}" '
+            f'font-size="3.2" font-weight="600">{title_lines[idx]}</text>'
+        )
+    p.append(
+        f'<text x="{layout.rx}" y="{layout.points_y}" dominant-baseline="hanging" '
+        f'fill="#666" font-family="{layout.font_family}" '
+        f'font-size="2.5">Points:</text>'
+    )
+    p.append(
+        f'<text x="{layout.vx}" y="{layout.points_y}" text-anchor="middle" '
+        f'dominant-baseline="hanging" fill="black" font-family="{layout.font_family}" '
+        f'font-size="2.8" font-weight="700">{points}</text>'
+    )
+    p.append(
+        f'<text x="{layout.rx}" y="{layout.quiz_y}" dominant-baseline="hanging" '
+        f'fill="#666" font-family="{layout.font_family}" '
+        f'font-size="2.5">Quiz:</text>'
+    )
+    p.append(
+        f'<text x="{layout.vx}" y="{layout.quiz_y}" text-anchor="middle" '
+        f'dominant-baseline="hanging" fill="black" font-family="{layout.font_family}" '
+        f'font-size="2.8" font-weight="700">{quiz}</text>'
+    )
 
     return "<g>\n  " + "\n  ".join(p) + "\n</g>"
 
 
-def build_html(books, display_scale=1, bw=False, with_border=False):
+def build_html(
+    books: List[Dict[str, Any]],
+    display_scale: int = 1,
+    bw: bool = False,
+    with_border: bool = False,
+    layout: Optional[Layout] = None,
+) -> str:
     """Build a multi-page HTML document with SVG labels.
 
     Page dimensions are in millimetres (A4 portrait: 210mm x 297mm) so that
@@ -226,87 +317,113 @@ def build_html(books, display_scale=1, bw=False, with_border=False):
         bw: When True, render labels in black-and-white mode.
         with_border: When True, add a thin printable cutting-guide border
             around each label.
+        layout: Optional :class:`Layout` instance.  When ``None`` a default
+            50×30 mm layout is used (backward-compatible behaviour).
+
+    Returns:
+        Complete HTML document string.
     """
-    pages = []
-    for i in range(0, len(books), LABELS_PER_PAGE):
-        pages.append(books[i:i + LABELS_PER_PAGE])
+    if layout is None:
+        layout = Layout()
+
+    pages: List[List[Dict[str, Any]]] = []
+    for i in range(0, len(books), layout.labels_per_page):
+        pages.append(books[i:i + layout.labels_per_page])
 
     s = display_scale
 
-    page_blocks = []
+    page_blocks: List[str] = []
     for page_idx, page_books in enumerate(pages):
         labels_svg = ""
         for i, book in enumerate(page_books):
-            row = i // len(COLS_X)
-            col = i % len(COLS_X)
-            x = COLS_X[col]
-            y = ROWS_Y[row]
-            labels_svg += f'<g transform="translate({x},{y})">{_generate_label_svg(book, bw=bw, with_border=with_border)}</g>\n'
+            row = i // layout.cols
+            col = i % layout.cols
+            x = layout.cols_x[col]
+            y = layout.rows_y[row]
+            labels_svg += (
+                f'<g transform="translate({x},{y})">'
+                f'{_generate_label_svg(book, bw=bw, with_border=with_border, layout=layout)}'
+                f'</g>\n'
+            )
 
-        pb = ' style="page-break-after: always;"' if page_idx < len(pages) - 1 else ''
-        page_blocks.append(f'''<div class="page"{pb}>
-<svg width="{PAGE_W}mm" height="{PAGE_H}mm" viewBox="0 0 {PAGE_W} {PAGE_H}" xmlns="http://www.w3.org/2000/svg">
-<rect width="{PAGE_W}" height="{PAGE_H}" fill="white"/>
-{labels_svg}
-</svg>
-</div>''')
+        pb = ' style="page-break-after: always;"' if page_idx < len(pages) - 1 else ""
+        page_blocks.append(
+            f'<div class="page"{pb}>\n'
+        f'<svg width="{layout.page_w:g}mm" height="{layout.page_h:g}mm" '
+        f'viewBox="0 0 {layout.page_w:g} {layout.page_h:g}" '
+        f'xmlns="http://www.w3.org/2000/svg">\n'
+        f'<rect width="{layout.page_w:g}" height="{layout.page_h:g}" fill="white"/>\n'
+            f'{labels_svg}'
+            f'</svg>\n'
+            f'</div>'
+        )
 
-    return f'''<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>AR Book Labels</title>
-<style>
-  @page {{ size: {PAGE_W}mm {PAGE_H}mm; margin: 0; }}
-  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-  body {{
-    background: #e0e0e0;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-    color-adjust: exact !important;
-  }}
-  .page {{
-    width: {PAGE_W}mm;
-    height: {PAGE_H}mm;
-    margin: 0 auto;
-    margin-bottom: calc(10px + {PAGE_H}mm * ({s} - 1));
-    background: white;
-    transform: scale({s});
-    transform-origin: top center;
-  }}
-  .page svg {{ display: block; }}
-  .label-outline {{
-    fill: none;
-    stroke: #999999;
-    stroke-width: 0.2;
-    stroke-dasharray: 1.2, 1.2;
-  }}
-  .label-border {{
-    fill: none;
-    stroke: #000000;
-    stroke-width: 0.15;
-  }}
-  @media print {{
-    body {{ margin: 0; background: white; }}
-    .page {{
-      transform: none;
-      margin: 0 !important;
-      page-break-after: always;
-    }}
-    .page:last-child {{ page-break-after: auto; }}
-    .label-outline {{ stroke: none; }}
-  }}
-</style>
-</head>
-<body>
-{"".join(page_blocks)}
-</body>
-</html>'''
+    return (
+        '<!DOCTYPE html>\n'
+        '<html lang="en">\n'
+        '<head>\n'
+        '<meta charset="UTF-8">\n'
+        '<title>AR Book Labels</title>\n'
+        '<style>\n'
+        f'  @page {{ size: {layout.page_w:g}mm {layout.page_h:g}mm; margin: 0; }}\n'
+        '  * { margin: 0; padding: 0; box-sizing: border-box; }\n'
+        '  body {\n'
+        '    background: #e0e0e0;\n'
+        '    -webkit-print-color-adjust: exact !important;\n'
+        '    print-color-adjust: exact !important;\n'
+        '    color-adjust: exact !important;\n'
+        '  }\n'
+        '  .page {\n'
+        f'    width: {layout.page_w:g}mm;\n'
+        f'    height: {layout.page_h:g}mm;\n'
+        '    margin: 0 auto;\n'
+        f'    margin-bottom: calc(10px + {layout.page_h:g}mm * ({s} - 1));\n'
+        '    background: white;\n'
+        f'    transform: scale({s});\n'
+        '    transform-origin: top center;\n'
+        '  }\n'
+        '  .page svg { display: block; }\n'
+        '  .label-outline {\n'
+        '    fill: none;\n'
+        '    stroke: #999999;\n'
+        '    stroke-width: 0.2;\n'
+        '    stroke-dasharray: 1.2, 1.2;\n'
+        '  }\n'
+        '  .label-border {\n'
+        '    fill: none;\n'
+        '    stroke: #000000;\n'
+        '    stroke-width: 0.15;\n'
+        '  }\n'
+        '  @media print {\n'
+        '    body { margin: 0; background: white; }\n'
+        '    .page {\n'
+        '      transform: none;\n'
+        '      margin: 0 !important;\n'
+        '      page-break-after: always;\n'
+        '    }\n'
+        '    .page:last-child { page-break-after: auto; }\n'
+        '    .label-outline { stroke: none; }\n'
+        '  }\n'
+        '</style>\n'
+        '</head>\n'
+        '<body>\n'
+        f'{"".join(page_blocks)}\n'
+        '</body>\n'
+        '</html>'
+    )
 
 
-def generate(excel_path, output_path, sheet_name=None,
-             column_mapping=None, start_row=2, display_scale=1, bw=False,
-             with_border=False):
+def generate(
+    excel_path: str,
+    output_path: str,
+    sheet_name: Optional[str] = None,
+    column_mapping: Optional[Dict[str, str]] = None,
+    start_row: int = 2,
+    display_scale: int = 1,
+    bw: bool = False,
+    with_border: bool = False,
+    layout: Optional[Layout] = None,
+) -> Tuple[int, int, List[str]]:
     """High-level entry point: read Excel, generate labels, write HTML.
 
     Args:
@@ -320,22 +437,27 @@ def generate(excel_path, output_path, sheet_name=None,
             thin black outline, black level number).
         with_border: When True, add a thin printable cutting-guide border
             around each label.
+        layout: Optional :class:`Layout` instance.  When ``None`` a default
+            50×30 mm layout is used (backward-compatible behaviour).
 
     Returns:
         tuple: (number_of_books, number_of_pages, warnings_list)
     """
+    if layout is None:
+        layout = Layout()
+
     books, warnings = read_books(
         excel_path, sheet_name, columns=column_mapping, start_row=start_row
     )
     if not books:
-        html = build_html([], display_scale, bw=bw, with_border=with_border)
+        html = build_html([], display_scale, bw=bw, with_border=with_border, layout=layout)
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(html)
         return 0, 0, warnings
 
-    html = build_html(books, display_scale, bw=bw, with_border=with_border)
+    html = build_html(books, display_scale, bw=bw, with_border=with_border, layout=layout)
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(html)
 
-    n_pages = (len(books) + LABELS_PER_PAGE - 1) // LABELS_PER_PAGE
+    n_pages = (len(books) + layout.labels_per_page - 1) // layout.labels_per_page
     return len(books), n_pages, warnings

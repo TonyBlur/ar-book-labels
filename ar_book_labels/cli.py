@@ -5,7 +5,9 @@ import sys
 from pathlib import Path
 
 from ar_book_labels import __version__
+from ar_book_labels.config import load_config, merge_configs, parse_label_size, parse_colors
 from ar_book_labels.generator import generate, DEFAULT_COLUMNS
+from ar_book_labels.layout import Layout
 
 
 def main():
@@ -65,6 +67,41 @@ def main():
     parser.add_argument(
         "-V", "--version", action="version", version=f"%(prog)s {__version__}",
     )
+
+    # --- New layout arguments ------------------------------------------------
+    parser.add_argument(
+        "--label-size", default=None,
+        help="Label size: preset name (50x30, 70x37, 63x38, 99x38) or WxH in mm (default: 50x30)",
+    )
+    parser.add_argument(
+        "--col-gap", type=float, default=None,
+        help="Column gap in mm (default: 2 for 50x30 preset)",
+    )
+    parser.add_argument(
+        "--row-gap", type=float, default=None,
+        help="Row gap in mm (default: 0)",
+    )
+    parser.add_argument(
+        "--margin", type=float, default=None,
+        help="Uniform page margin in mm for all four sides",
+    )
+    parser.add_argument(
+        "--font", default=None,
+        help="Font family for label text",
+    )
+    parser.add_argument(
+        "--radius", type=float, default=None,
+        help="Label border radius in mm (default: 4)",
+    )
+    parser.add_argument(
+        "--colors", default=None,
+        help='Colour scheme: "min-max:#HEX,min-max:#HEX,..." (replaces default AR colours)',
+    )
+    parser.add_argument(
+        "--config", default=None,
+        help="Path to a YAML or JSON configuration file",
+    )
+
     args = parser.parse_args()
 
     if args.template:
@@ -90,6 +127,9 @@ def main():
         "quiz": args.col_quiz,
     }
 
+    # --- Build layout from CLI args + config file ---------------------------
+    layout = _build_layout(args)
+
     try:
         n_books, n_pages, warnings = generate(
             excel_path=str(excel_path),
@@ -100,6 +140,7 @@ def main():
             display_scale=args.scale,
             bw=args.bw,
             with_border=args.with_border,
+            layout=layout,
         )
     except KeyError as e:
         print(f"Error: sheet not found: {e}", file=sys.stderr)
@@ -117,6 +158,63 @@ def main():
         sys.exit(0)
 
     print(f"Generated {n_books} labels ({n_pages} pages) -> {output_path}")
+
+
+def _build_layout(args: argparse.Namespace) -> Layout:
+    """Construct a Layout from CLI arguments and an optional config file.
+
+    Priority: CLI args > config file > Layout defaults.
+    """
+    # 1. Collect explicitly-set CLI args into a dict
+    cli_args: dict = {}
+    if args.label_size is not None:
+        cli_args["label_size"] = args.label_size
+    if args.col_gap is not None:
+        cli_args["col_gap"] = args.col_gap
+    if args.row_gap is not None:
+        cli_args["row_gap"] = args.row_gap
+    if args.margin is not None:
+        cli_args["margin"] = args.margin
+    if args.font is not None:
+        cli_args["font"] = args.font
+    if args.radius is not None:
+        cli_args["radius"] = args.radius
+    if args.colors is not None:
+        cli_args["colors"] = args.colors
+
+    # 2. Load config file (if specified)
+    file_config: dict = {}
+    if args.config:
+        config_path = Path(args.config)
+        if not config_path.exists():
+            print(f"Error: config file not found: {config_path}", file=sys.stderr)
+            sys.exit(1)
+        try:
+            file_config = load_config(config_path)
+        except (ImportError, ValueError) as e:
+            print(f"Error loading config: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    # 3. Merge: defaults (empty — Layout has its own) + file + CLI
+    merged = merge_configs(cli_args, file_config, {})
+
+    # 4. Parse colours string into level_colors list (if present)
+    colors_str = merged.get("colors")
+    if colors_str and isinstance(colors_str, str):
+        try:
+            merged["level_colors"] = parse_colors(colors_str)
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    # 5. Create Layout
+    try:
+        layout = Layout.from_config(merged)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    return layout
 
 
 def _copy_template():

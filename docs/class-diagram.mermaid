@@ -1,0 +1,69 @@
+classDiagram
+    class Layout {
+        +float page_w
+        +float page_h
+        +float label_w
+        +float label_h
+        +float label_rx
+        +float col_gap
+        +float row_gap
+        +float margin_top
+        +float margin_left
+        +str font_family
+        +float cx
+        +float cy
+        +float cr
+        +float rx
+        +float vx
+        +float top_y
+        +float author_lh
+        +float title_lh
+        +float points_y
+        +float quiz_y
+        +list~float~ cols_x
+        +list~float~ rows_y
+        +int cols
+        +int rows
+        +int labels_per_page
+        +compute_grid() void
+        +compute_internal() void
+        +from_config(config: dict)$ Layout
+        +to_svg_label(book: dict, bw: bool, with_border: bool) str
+    }
+
+    class ConfigLoader {
+        +load_config(path: str) dict
+        +merge_configs(cli_args: dict, file_config: dict, defaults: dict) dict
+        +parse_label_size(size_str: str) tuple
+        +parse_colors(colors_str: str) list
+    }
+
+    class Generator {
+        +read_books(excel_path, sheet_name, columns, start_row) tuple
+        +get_level_color(level) str
+        +get_badge_text_color(bg_color) str
+        +split_text_lines(text, max_chars) list
+        +_generate_label_svg(book, layout, bw, with_border) str
+        +build_html(books, layout, display_scale, bw, with_border) str
+        +generate(excel_path, output_path, layout, ...) tuple
+    }
+
+    class CLI {
+        +main() void
+        -_copy_template() void
+    }
+
+    class Presets {
+        +PRESET_50x30 : dict
+        +PRESET_70x37 : dict
+        +PRESET_63x38 : dict
+        +PRESET_99x38 : dict
+        +get_preset(name: str) dict
+    }
+
+    CLI --> ConfigLoader : uses
+    CLI --> Layout : creates
+    CLI --> Generator : calls generate()
+    Generator --> Layout : uses for coordinates
+    ConfigLoader --> Layout : creates via from_config()
+    Layout --> Presets : uses for defaults

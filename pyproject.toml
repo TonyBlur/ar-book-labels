@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ar-book-labels"
-version = "0.1.3"
+version = "0.2.0"
 description = "Generate printable Accelerated Reader book labels from an Excel spreadsheet."
 readme = "README.md"
 license = "MIT"
@@ -22,6 +22,9 @@ classifiers = [
 dependencies = [
     "openpyxl>=3.0",
 ]
+
+[project.optional-dependencies]
+yaml = ["pyyaml>=6.0"]
 
 [project.scripts]
 ar-book-labels = "ar_book_labels.cli:main"

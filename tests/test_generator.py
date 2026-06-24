@@ -8,7 +8,12 @@ from ar_book_labels.generator import (
     build_html,
     LABELS_PER_PAGE,
 )
+from ar_book_labels.layout import Layout
 
+
+# ---------------------------------------------------------------------------
+# Original tests (backward compatibility)
+# ---------------------------------------------------------------------------
 
 def test_level_colors():
     assert get_level_color(1.0) == "#FFD700"  # yellow
@@ -25,6 +30,14 @@ def test_level_colors():
     assert get_level_color(7.0) == "#8B4513"  # brown
     assert get_level_color(0.0) == "#999999"  # out of range → grey
     assert get_level_color("invalid") == "#999999"
+
+
+def test_level_colors_custom():
+    """get_level_color with a custom colour list."""
+    custom = [(0.0, 3.0, "#111111"), (3.1, 99.0, "#EEEEEE")]
+    assert get_level_color(2.0, colors=custom) == "#111111"
+    assert get_level_color(5.0, colors=custom) == "#EEEEEE"
+    assert get_level_color(0.0, colors=custom) == "#111111"
 
 
 def test_badge_text_color():
@@ -96,3 +109,99 @@ def test_build_html_multi_page():
     ]
     html = build_html(books)
     assert html.count('<div class="page"') == 2
+
+
+# ---------------------------------------------------------------------------
+# New tests: Layout-based API
+# ---------------------------------------------------------------------------
+
+def test_build_html_with_custom_layout():
+    """build_html with a custom Layout should produce correct dimensions."""
+    layout = Layout.from_config({"label_size": "70x37"})
+    book = {
+        "title": "Test Book",
+        "author": "Test Author",
+        "level": 3.5,
+        "points": 5,
+        "quiz": 12345,
+    }
+    html = build_html([book], layout=layout)
+    # Page dimensions should match the layout
+    assert 'width="210mm"' in html
+    assert 'height="297mm"' in html
+    # Label should be present
+    assert "Test Book" in html
+    assert "Test Author" in html
+
+
+def test_build_html_with_custom_colors():
+    """Custom level_colors should be used when provided."""
+    custom_colors = [(0.0, 99.0, "#FF0000")]  # all red
+    layout = Layout(level_colors=custom_colors)
+    book = {
+        "title": "Red Book",
+        "author": "Author",
+        "level": 3.0,
+        "points": 1,
+        "quiz": 100,
+    }
+    html = build_html([book], layout=layout)
+    # The badge should use the custom colour
+    assert '#FF0000' in html
+
+
+def test_build_html_with_custom_font():
+    """Custom font_family should appear in the SVG."""
+    layout = Layout(font_family="Arial, sans-serif")
+    book = {
+        "title": "Font Test",
+        "author": "Author",
+        "level": 2.0,
+        "points": 1,
+        "quiz": 100,
+    }
+    html = build_html([book], layout=layout)
+    assert "Arial, sans-serif" in html
+
+
+def test_build_html_default_layout_backward_compat():
+    """build_html() without layout should produce the same output as before."""
+    book = {
+        "title": "Compat Test",
+        "author": "Author",
+        "level": 2.0,
+        "points": 1,
+        "quiz": 100,
+    }
+    # Call without layout (backward compatible)
+    html_no_layout = build_html([book])
+    # Call with default Layout
+    html_default_layout = build_html([book], layout=Layout())
+    # They should be identical
+    assert html_no_layout == html_default_layout
+
+
+def test_build_html_page_count_with_custom_layout():
+    """Page count should respect layout.labels_per_page."""
+    layout = Layout.from_config({"label_size": "70x37"})  # 21 labels/page
+    books = [
+        {"title": f"Book {i}", "author": "A", "level": 2.0, "points": 1, "quiz": i}
+        for i in range(22)  # 22 books → 2 pages (21 + 1)
+    ]
+    html = build_html(books, layout=layout)
+    assert html.count('<div class="page"') == 2
+
+
+def test_build_html_bw_mode_with_layout():
+    """B&W mode should work correctly with a custom layout."""
+    layout = Layout(label_w=70, label_h=37, margin_x=0, margin_y=0, col_gap=0, row_gap=0)
+    book = {
+        "title": "BW Test",
+        "author": "Author",
+        "level": 3.0,
+        "points": 1,
+        "quiz": 100,
+    }
+    html = build_html([book], bw=True, layout=layout)
+    assert 'fill="white"' in html  # circle fill in bw mode
+    assert 'stroke="black"' in html  # circle stroke in bw mode

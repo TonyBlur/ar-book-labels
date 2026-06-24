@@ -1,0 +1,54 @@
+sequenceDiagram
+    participant User as User
+    participant CLI as cli.py
+    participant Config as config.py
+    participant Layout as Layout
+    participant Gen as generator.py
+    participant FS as FileSystem
+
+    User->>CLI: ar-book-labels books.xlsx --label-size 70x37 --config config.yaml
+
+    CLI->>CLI: argparse.parse_args()
+    Note over CLI: Parse --label-size, --config, etc.
+
+    CLI->>Config: load_config("config.yaml")
+    Config->>FS: Read YAML file
+    FS-->>Config: YAML content
+    Config->>Config: Parse YAML (with PyYAML or JSON fallback)
+    Config-->>CLI: file_config dict
+
+    CLI->>Config: merge_configs(cli_args, file_config, defaults)
+    Note over Config: Priority: CLI > file > defaults
+    Config-->>CLI: merged_config dict
+
+    CLI->>Config: parse_label_size("70x37")
+    Config-->>CLI: (70.0, 37.0)
+
+    CLI->>Layout: Layout.from_config(merged_config)
+    Layout->>Layout: Set all parameters from config
+    Layout->>Layout: compute_internal()
+    Note over Layout: Scale CX, CY, CR, RX, VX, TOP_Y, etc.<br/>proportionally to 70x37 ratio
+    Layout->>Layout: compute_grid()
+    Note over Layout: available_w = 210 - 2*7.5 = 195<br/>available_h = 297 - 2*14 = 269<br/>cols = floor(197/72) = 2<br/>rows = floor(269/37) = 7<br/>labels_per_page = 14
+    Layout-->>CLI: layout instance
+
+    CLI->>Gen: generate("books.xlsx", "output.html", layout=layout, ...)
+    Gen->>Gen: read_books("books.xlsx", ...)
+
+    alt Books found
+        Gen->>Gen: build_html(books, layout=layout, ...)
+        loop For each page
+            loop For each book on page
+                Gen->>Gen: _generate_label_svg(book, layout=layout, ...)
+                Note over Gen: Use layout.cx, layout.cy, layout.rx, etc.<br/>for SVG coordinates
+                Gen-->>Gen: SVG markup string
+            end
+            Gen->>Gen: Compose page SVG with layout.cols_x, layout.rows_y
+        end
+        Gen->>FS: Write HTML output
+        Gen-->>CLI: (n_books, n_pages, warnings)
+        CLI-->>User: "Generated 42 labels (3 pages) -> output.html"
+    else No books
+        Gen-->>CLI: (0, 0, warnings)
+        CLI-->>User: "Warning: no books found"
+    end
