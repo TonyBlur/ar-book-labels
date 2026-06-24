@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ar-book-labels"
-version = "0.1.1"
+version = "0.1.2"
 description = "Generate printable Accelerated Reader book labels from an Excel spreadsheet."
 readme = "README.md"
 license = "MIT"
