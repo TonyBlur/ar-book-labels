@@ -1,8 +1,10 @@
 """Core label generation logic."""
 
+import csv
 import html as html_module
+import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TypedDict
 
 from openpyxl import load_workbook
 
@@ -24,42 +26,41 @@ LEVEL_COLORS: List[Tuple[float, float, str]] = [
     (6.6, 99.0, "#8B4513"),  # brown
 ]
 
-# ==================== SVG Layout Constants ====================
-# These are the *original* hardcoded values kept for reference and for any
-# code that still imports them directly.  The canonical values now live in
-# the ``Layout`` dataclass (with identical defaults for 50×30 mm labels).
-PAGE_W = 210
-PAGE_H = 297
-
-# Grid: 4 columns x 9 rows = 36 labels per page
-COLS_X = [2, 54, 106, 158]
-ROWS_Y = [13.5, 43.5, 73.5, 103.5, 133.5, 163.5, 193.5, 223.5, 253.5]
-LABEL_W = 50
-LABEL_H = 30
-LABEL_RX = 4
-LABELS_PER_PAGE = len(COLS_X) * len(ROWS_Y)  # 36
-
-FONT = "'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif"
-
 # Default column names (matching the template)
-DEFAULT_COLUMNS = {
+DEFAULT_COLUMNS: Dict[str, str] = {
     "title": "AR Title",
     "author": "AR Author",
     "level": "Book Level",
     "points": "AR Points",
     "quiz": "Quiz Number",
 }
-REQUIRED_FIELDS = ["title", "author", "level", "points", "quiz"]
+REQUIRED_FIELDS: List[str] = ["title", "author", "level", "points", "quiz"]
 
-# Label internal coordinates (50 wide x 30 high, units in mm)
-CX, CY, CR = 11, 18, 6.5       # Badge circle: cx=11, cy=18(下移2), bottom=24.5
-RX = 21                        # Right-side text area x start
-VX = 34                        # Points/Quiz value x (center anchor, 右移4)
-TOP_Y = 4                      # Top text baseline/start y
-AUTHOR_LH = 3.2                # Author line height
-TITLE_LH = 3.6                 # Title line height
-POINTS_Y = 17.2                # Points row (下移2)
-QUIZ_Y = 21.7                  # Quiz row (下移2); bottom ≈ 24.5 = circle bottom
+
+# ==================== TypedDict for Book Data ====================
+
+class BookDict(TypedDict):
+    """Represents a single book record extracted from the spreadsheet.
+
+    Attributes
+    ----------
+    title:
+        Book title.
+    author:
+        Book author.
+    level:
+        AR reading level (numeric).
+    points:
+        AR points value.
+    quiz:
+        Quiz number.
+    """
+
+    title: str
+    author: str
+    level: Any
+    points: Any
+    quiz: Any
 
 
 def get_level_color(level: Any, colors: Optional[List[Tuple[float, float, str]]] = None) -> str:
@@ -114,22 +115,81 @@ def split_text_lines(text: str, max_chars_per_line: int) -> List[str]:
 
 
 def read_books(
-    excel_path: str,
-    sheet_name: Optional[str],
+    file_path: str,
+    sheet_name: Optional[str] = None,
     columns: Optional[Dict[str, str]] = None,
     start_row: int = 2,
-) -> Tuple[List[Dict[str, Any]], List[str]]:
-    """Read book data from an Excel file.
+) -> Tuple[List[BookDict], List[str]]:
+    """Read book data from an Excel (.xlsx) or CSV (.csv) file.
 
-    Args:
-        excel_path: Path to the .xlsx file.
-        sheet_name: Name of the sheet to read.
-        columns: Dict mapping internal keys to Excel column names.
-                 Missing keys fall back to DEFAULT_COLUMNS.
-        start_row: 1-indexed row number where data begins (1 = header row).
+    The file format is auto-detected from the file extension.
 
-    Returns:
-        tuple: (books_list, warnings_list)
+    Parameters
+    ----------
+    file_path:
+        Path to the .xlsx or .csv file.
+    sheet_name:
+        Name of the sheet to read (Excel only).  ``None`` means the first sheet.
+        Ignored for CSV files.
+    columns:
+        Dict mapping internal keys to column names.
+        Missing keys fall back to ``DEFAULT_COLUMNS``.
+    start_row:
+        1-indexed row number where data begins (1 = header row).
+
+    Returns
+    -------
+    tuple[list[BookDict], list[str]]
+        ``(books_list, warnings_list)``
+
+    Raises
+    ------
+    ValueError
+        If required columns are not found or the file extension is unsupported.
+    FileNotFoundError
+        If the file does not exist.
+    """
+    path = Path(file_path)
+    if not path.exists():
+        raise FileNotFoundError(f"File not found: {file_path}")
+
+    suffix = path.suffix.lower()
+    if suffix == ".csv":
+        return _read_books_csv(file_path, columns=columns, start_row=start_row)
+    elif suffix == ".xlsx":
+        return _read_books_excel(
+            file_path, sheet_name=sheet_name, columns=columns, start_row=start_row
+        )
+    else:
+        raise ValueError(
+            f"Unsupported file format: '{suffix}'. Use .xlsx or .csv."
+        )
+
+
+def _read_books_excel(
+    excel_path: str,
+    sheet_name: Optional[str],
+    columns: Optional[Dict[str, str]],
+    start_row: int,
+) -> Tuple[List[BookDict], List[str]]:
+    """Read book data from an Excel (.xlsx) file.
+
+    Parameters
+    ----------
+    excel_path:
+        Path to the .xlsx file.
+    sheet_name:
+        Name of the sheet to read.  ``None`` means the first sheet.
+    columns:
+        Dict mapping internal keys to Excel column names.
+        Missing keys fall back to ``DEFAULT_COLUMNS``.
+    start_row:
+        1-indexed row number where data begins (1 = header row).
+
+    Returns
+    -------
+    tuple[list[BookDict], list[str]]
+        ``(books_list, warnings_list)``
     """
     cols = {**DEFAULT_COLUMNS, **(columns or {})}
     wb = load_workbook(excel_path, read_only=True, data_only=True)
@@ -154,8 +214,8 @@ def read_books(
             f"Use --col-* options to map your column names."
         )
 
-    books = []
-    warnings = []
+    books: List[BookDict] = []
+    warnings: List[str] = []
     data_rows = rows[start_row - 1:]  # start_row is 1-indexed
     for i, row in enumerate(data_rows):
         row_num = start_row + i
@@ -186,25 +246,137 @@ def read_books(
     return books, warnings
 
 
+def _read_books_csv(
+    csv_path: str,
+    columns: Optional[Dict[str, str]],
+    start_row: int,
+) -> Tuple[List[BookDict], List[str]]:
+    """Read book data from a CSV file.
+
+    Parameters
+    ----------
+    csv_path:
+        Path to the .csv file.
+    columns:
+        Dict mapping internal keys to CSV column names.
+        Missing keys fall back to ``DEFAULT_COLUMNS``.
+    start_row:
+        1-indexed row number where data begins (1 = header row).
+
+    Returns
+    -------
+    tuple[list[BookDict], list[str]]
+        ``(books_list, warnings_list)``
+
+    Raises
+    ------
+    ValueError
+        If required columns are not found in the CSV header row.
+    """
+    cols = {**DEFAULT_COLUMNS, **(columns or {})}
+
+    with open(csv_path, "r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.reader(f)
+        all_rows = list(reader)
+
+    if not all_rows:
+        raise ValueError(f"CSV file is empty: {csv_path}")
+
+    headers = [h.strip() for h in all_rows[0] if h.strip()]
+
+    # Check that required columns exist
+    missing_cols = []
+    for key in REQUIRED_FIELDS:
+        if cols[key] not in headers:
+            missing_cols.append(f"{key} ('{cols[key]}')")
+    if missing_cols:
+        raise ValueError(
+            f"Columns not found in CSV file: {', '.join(missing_cols)}.\n"
+            f"Available columns: {', '.join(headers)}\n"
+            f"Use --col-* options to map your column names."
+        )
+
+    books: List[BookDict] = []
+    warnings: List[str] = []
+    data_rows = all_rows[start_row - 1:]  # start_row is 1-indexed
+
+    for i, row in enumerate(data_rows):
+        row_num = start_row + i
+        # Pad row to header length if shorter
+        padded_row = list(row) + [""] * (len(headers) - len(row))
+        raw = dict(zip(headers, padded_row[:len(headers)]))
+
+        # Skip entirely empty rows
+        if all(v == "" or v is None for v in raw.values()):
+            continue
+
+        # Validate required fields
+        missing = []
+        for key in REQUIRED_FIELDS:
+            val = raw.get(cols[key])
+            if val is None or (isinstance(val, str) and not val.strip()):
+                missing.append(cols[key])
+        if missing:
+            warnings.append(f"Row {row_num}: skipped — missing: {', '.join(missing)}")
+            continue
+
+        # Convert numeric fields where possible
+        level_val = raw[cols["level"]]
+        points_val = raw[cols["points"]]
+        quiz_val = raw[cols["quiz"]]
+
+        try:
+            level_val = float(level_val)
+        except (ValueError, TypeError):
+            pass  # keep as string
+
+        try:
+            points_val = float(points_val)
+        except (ValueError, TypeError):
+            pass
+
+        try:
+            quiz_val = int(float(quiz_val))
+        except (ValueError, TypeError):
+            pass
+
+        books.append({
+            "title": raw[cols["title"]],
+            "author": raw[cols["author"]],
+            "level": level_val,
+            "points": points_val,
+            "quiz": quiz_val,
+        })
+
+    return books, warnings
+
+
 def _generate_label_svg(
-    book: Dict[str, Any],
+    book: BookDict,
     bw: bool = False,
     with_border: bool = False,
     layout: Optional[Layout] = None,
 ) -> str:
     """Generate SVG markup for a single label.
 
-    Args:
-        book: Dict with title, author, level, points, quiz.
-        bw: When True, render in black-and-white mode — white circle with a
-            thin black outline and a black level number. When False (default),
-            use the standard AR color-coded badge.
-        with_border: When True, add a thin printable border around the label
-            for manual cutting guides.
-        layout: Optional :class:`Layout` instance.  When ``None`` a default
-            50×30 mm layout is used (backward-compatible behaviour).
+    Parameters
+    ----------
+    book:
+        Book record with title, author, level, points, quiz.
+    bw:
+        When True, render in black-and-white mode — white circle with a
+        thin black outline and a black level number.  When False (default),
+        use the standard AR color-coded badge.
+    with_border:
+        When True, add a thin printable border around the label
+        for manual cutting guides.
+    layout:
+        Optional :class:`Layout` instance.  When ``None`` a default
+        50×30 mm layout is used (backward-compatible behaviour).
 
-    Returns:
+    Returns
+    -------
+    str
         SVG markup string for the label (a ``<g>`` element).
     """
     if layout is None:
@@ -298,7 +470,7 @@ def _generate_label_svg(
 
 
 def build_html(
-    books: List[Dict[str, Any]],
+    books: List[BookDict],
     display_scale: int = 1,
     bw: bool = False,
     with_border: bool = False,
@@ -311,22 +483,30 @@ def build_html(
     scale(display_scale)``; ``@media print`` resets the transform to guarantee
     exact physical dimensions.
 
-    Args:
-        books: List of book dicts.
-        display_scale: Scale factor for screen preview.
-        bw: When True, render labels in black-and-white mode.
-        with_border: When True, add a thin printable cutting-guide border
-            around each label.
-        layout: Optional :class:`Layout` instance.  When ``None`` a default
-            50×30 mm layout is used (backward-compatible behaviour).
+    Parameters
+    ----------
+    books:
+        List of book dicts.
+    display_scale:
+        Scale factor for screen preview.
+    bw:
+        When True, render labels in black-and-white mode.
+    with_border:
+        When True, add a thin printable cutting-guide border
+        around each label.
+    layout:
+        Optional :class:`Layout` instance.  When ``None`` a default
+        50×30 mm layout is used (backward-compatible behaviour).
 
-    Returns:
+    Returns
+    -------
+    str
         Complete HTML document string.
     """
     if layout is None:
         layout = Layout()
 
-    pages: List[List[Dict[str, Any]]] = []
+    pages: List[List[BookDict]] = []
     for i in range(0, len(books), layout.labels_per_page):
         pages.append(books[i:i + layout.labels_per_page])
 
@@ -414,7 +594,7 @@ def build_html(
 
 
 def generate(
-    excel_path: str,
+    file_path: str,
     output_path: str,
     sheet_name: Optional[str] = None,
     column_mapping: Optional[Dict[str, str]] = None,
@@ -424,40 +604,52 @@ def generate(
     with_border: bool = False,
     layout: Optional[Layout] = None,
 ) -> Tuple[int, int, List[str]]:
-    """High-level entry point: read Excel, generate labels, write HTML.
+    """High-level entry point: read Excel/CSV, generate labels, write HTML.
 
-    Args:
-        excel_path: Path to the .xlsx file.
-        output_path: Output HTML file path.
-        sheet_name: Sheet name to read; None means the first sheet.
-        column_mapping: Optional dict mapping internal keys to Excel column names.
-        start_row: 1-indexed row number where data begins.
-        display_scale: Scale factor for screen preview.
-        bw: When True, render labels in black-and-white mode (white circle,
-            thin black outline, black level number).
-        with_border: When True, add a thin printable cutting-guide border
-            around each label.
-        layout: Optional :class:`Layout` instance.  When ``None`` a default
-            50×30 mm layout is used (backward-compatible behaviour).
+    Parameters
+    ----------
+    file_path:
+        Path to the .xlsx or .csv file.
+    output_path:
+        Output HTML file path.
+    sheet_name:
+        Sheet name to read (Excel only); ``None`` means the first sheet.
+    column_mapping:
+        Optional dict mapping internal keys to column names.
+    start_row:
+        1-indexed row number where data begins.
+    display_scale:
+        Scale factor for screen preview.
+    bw:
+        When True, render labels in black-and-white mode (white circle,
+        thin black outline, black level number).
+    with_border:
+        When True, add a thin printable cutting-guide border
+        around each label.
+    layout:
+        Optional :class:`Layout` instance.  When ``None`` a default
+        50×30 mm layout is used (backward-compatible behaviour).
 
-    Returns:
-        tuple: (number_of_books, number_of_pages, warnings_list)
+    Returns
+    -------
+    tuple[int, int, list[str]]
+        ``(number_of_books, number_of_pages, warnings_list)``
     """
     if layout is None:
         layout = Layout()
 
     books, warnings = read_books(
-        excel_path, sheet_name, columns=column_mapping, start_row=start_row
+        file_path, sheet_name, columns=column_mapping, start_row=start_row
     )
-    if not books:
-        html = build_html([], display_scale, bw=bw, with_border=with_border, layout=layout)
-        with open(output_path, "w", encoding="utf-8") as f:
-            f.write(html)
-        return 0, 0, warnings
 
-    html = build_html(books, display_scale, bw=bw, with_border=with_border, layout=layout)
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write(html)
+    # T01: Auto-create parent directories for the output path
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
 
-    n_pages = (len(books) + layout.labels_per_page - 1) // layout.labels_per_page
+    html_content = build_html(books, display_scale, bw=bw, with_border=with_border, layout=layout)
+
+    with open(out, "w", encoding="utf-8") as f:
+        f.write(html_content)
+
+    n_pages = 0 if not books else (len(books) + layout.labels_per_page - 1) // layout.labels_per_page
     return len(books), n_pages, warnings

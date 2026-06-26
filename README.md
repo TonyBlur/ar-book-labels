@@ -13,8 +13,9 @@ Generate printable [Accelerated Reader](https://www.renaissance.com/accelerated-
   - [Options](#options)
   - [Examples](#examples)
 - [Label Size Presets](#label-size-presets)
+- [Page Size Presets](#page-size-presets)
 - [Configuration File](#configuration-file)
-- [Excel Format](#excel-format)
+- [Input Format (Excel & CSV)](#input-format-excel--csv)
 - [AR Level Color Chart](#ar-level-color-chart)
 - [Custom Color Scheme](#custom-color-scheme)
 - [Development](#development)
@@ -23,14 +24,18 @@ Generate printable [Accelerated Reader](https://www.renaissance.com/accelerated-
 ## Features
 
 - **Flexible label sizing**: 4 built-in presets (50x30, 70x37, 63x38, 99x38) or custom dimensions via `--label-size`
+- **Multiple page sizes**: 7 presets (A4, A5, A3, Letter, Legal, B5, B4) or custom dimensions via `--page-size`
 - **Auto grid layout**: Columns, rows, and centering are computed automatically from label size
+- **Manual grid override**: Specify exact columns × rows with `--grid` (e.g. `4x9`)
 - **Customizable spacing**: Column gap (`--col-gap`), row gap (`--row-gap`), and page margin (`--margin`)
+- **CSV & Excel input**: Read book data from `.csv` or `.xlsx` files (auto-detected by extension)
 - **Standard AR color coding**: 12 color ranges from yellow (0.1–1.5) to brown (6.6+)
 - **Custom color scheme**: Override AR colors with `--colors`
 - **Black-and-white mode**: `--bw` for ink-saving printing
 - **Cutting-guide border**: `--with-border` adds a thin printable border for manual cutting
 - **Typography control**: Custom font family (`--font`) and border radius (`--radius`)
 - **YAML/JSON config**: Reusable configuration files via `--config`
+- **Config generation**: `--generate-config` creates an example config file to get started quickly
 - **Smart text truncation**: Titles wrap to 2 lines with ellipsis; authors on 1 line
 - **Author-first layout**: Author name appears above title for easy shelf sorting
 - **Print-ready HTML**: `@page` CSS for direct printing; screen preview via `--scale`
@@ -88,10 +93,11 @@ ar-book-labels <excel> [options]
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `excel` | — | Path to the Excel file (.xlsx) |
+| `excel` | — | Path to the Excel (.xlsx) or CSV (.csv) file |
 | `-o, --output` | `AR_Book_Labels.html` | Output HTML file path |
-| `-s, --sheet` | first sheet | Sheet name to read (defaults to first sheet) |
+| `-s, --sheet` | first sheet | Sheet name to read (defaults to first sheet, Excel only) |
 | `--start-row` | `2` | 1-indexed row where data begins (1 = header row) |
+| `--generate-config` | — | Generate an example config file and exit (YAML or JSON based on extension) |
 | `--template` | — | Copy the reference Excel template to cwd and exit |
 | `-V, --version` | — | Show version and exit |
 
@@ -110,6 +116,8 @@ ar-book-labels <excel> [options]
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--label-size` | `50x30` | Label size: preset name (`50x30`, `70x37`, `63x38`, `99x38`) or `WxH` in mm |
+| `--page-size` | `A4` | Page size: preset name (`A4`, `A5`, `A3`, `Letter`, `Legal`, `B5`, `B4`) or `WxH` in mm |
+| `--grid` | auto | Manual grid layout: `COLSxROWS` (e.g. `4x9`, `3x7`). Errors if grid doesn't fit on page |
 | `--col-gap` | `2` | Column gap in mm |
 | `--row-gap` | `0` | Row gap in mm |
 | `--margin` | `13.5` | Uniform page margin in mm for all four sides |
@@ -137,6 +145,13 @@ ar-book-labels <excel> [options]
 # Basic usage (default 50x30mm labels)
 ar-book-labels my_books.xlsx
 
+# CSV input (auto-detected by extension)
+ar-book-labels my_books.csv -o labels.html
+
+# Generate an example config file
+ar-book-labels --generate-config my_config.yaml
+ar-book-labels --generate-config my_config.json
+
 # Custom output path and sheet name
 ar-book-labels my_books.xlsx -o output/labels.html -s "Book Data"
 
@@ -148,6 +163,18 @@ ar-book-labels my_books.xlsx --label-size 63x38
 
 # Custom dimensions with wider gaps
 ar-book-labels my_books.xlsx --label-size 60x40 --col-gap 3 --row-gap 2
+
+# Letter paper (US)
+ar-book-labels my_books.xlsx --page-size Letter
+
+# A5 paper with manual 2×5 grid
+ar-book-labels my_books.xlsx --page-size A5 --grid 2x5
+
+# Manual grid layout (4 columns × 9 rows)
+ar-book-labels my_books.xlsx --grid 4x9
+
+# Custom page size (WxH in mm)
+ar-book-labels my_books.xlsx --page-size 150x200
 
 # Tighter margins (10mm)
 ar-book-labels my_books.xlsx --margin 10
@@ -184,6 +211,22 @@ Custom sizes are also supported: `--label-size WxH` where W and H are in millime
 
 When using a custom or preset size, the grid (columns, rows) is calculated automatically and labels are centered horizontally on the page.
 
+## Page Size Presets
+
+| Preset | Dimensions (W × H) | Notes |
+|--------|-------------------|-------|
+| `A4` | 210mm × 297mm | Default. Standard international paper. |
+| `A5` | 148mm × 210mm | Half of A4. Fewer labels per page. |
+| `A3` | 297mm × 420mm | Double A4. More labels per page. |
+| `Letter` | 215.9mm × 279.4mm | US standard. Slightly wider and shorter than A4. |
+| `Legal` | 215.9mm × 355.6mm | US legal. Taller than Letter. |
+| `B5` | 176mm × 250mm | Common in Japan and some European countries. |
+| `B4` | 250mm × 353mm | Larger format. |
+
+Custom page sizes are also supported: `--page-size WxH` where W and H are in millimeters.
+
+When the label grid doesn't fit the chosen page size (e.g. too-wide labels on a small page), the tool reports a clear error with suggestions for fixing it.
+
 ## Configuration File
 
 For reusable settings, create a YAML or JSON config file:
@@ -191,6 +234,8 @@ For reusable settings, create a YAML or JSON config file:
 ```yaml
 # ar-book-labels.yaml
 label_size: "50x30"
+page_size: "A4"        # A4, A5, A3, Letter, Legal, B5, B4, or WxH
+# grid: "4x9"          # Manual grid override (COLSxROWS)
 col_gap: 2
 row_gap: 0
 margin: 13.5
@@ -217,7 +262,9 @@ pip install ar-book-labels[yaml]
 
 JSON config files work without any extra dependencies.
 
-## Excel Format
+## Input Format (Excel & CSV)
+
+The tool accepts both Excel (`.xlsx`) and CSV (`.csv`) files. The format is auto-detected from the file extension.
 
 The spreadsheet must contain these columns (default names shown; use `--col-*` options to map custom names):
 

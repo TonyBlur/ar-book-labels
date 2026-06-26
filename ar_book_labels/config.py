@@ -197,6 +197,8 @@ def _flatten_config(raw: Dict[str, Any]) -> Dict[str, Any]:
         "margin_left": "margin_x",
         "margin_right": "margin_x",
         "preset": "label_size",
+        "paper_size": "page_size",
+        "paper": "page_size",
     }
     for old_key, new_key in _KEY_ALIASES.items():
         if old_key in flat and new_key not in flat:

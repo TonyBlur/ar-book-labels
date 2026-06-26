@@ -62,6 +62,23 @@ PRESETS: Dict[str, Dict[str, Any]] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Page-size presets.
+#
+# Common paper sizes in millimetres (landscape orientation is handled by
+# swapping ``page_w`` and ``page_h`` at the CLI level).
+# ---------------------------------------------------------------------------
+PAGE_PRESETS: Dict[str, Tuple[float, float]] = {
+    "A4":      (210.0, 297.0),
+    "A5":      (148.0, 210.0),
+    "A3":      (297.0, 420.0),
+    "Letter":  (215.9, 279.4),
+    "Legal":   (215.9, 355.6),
+    "B5":      (176.0, 250.0),
+    "B4":      (250.0, 353.0),
+}
+
+
 @dataclass
 class Layout:
     """Complete layout specification for AR book labels.
@@ -118,13 +135,75 @@ class Layout:
     rows: int = 0
     labels_per_page: int = 0
 
+    # -- Manual grid override (optional) -------------------------------------
+    # If set to (cols, rows), compute_grid uses these instead of auto-computing.
+    # ValueError is raised if the manual grid doesn't fit on the page.
+    grid: Optional[Tuple[int, int]] = None
+
     # -----------------------------------------------------------------------
     # Lifecycle
     # -----------------------------------------------------------------------
     def __post_init__(self) -> None:
-        """Compute derived values after initialisation."""
+        """Validate parameters and compute derived values."""
+        self._validate()
         self.compute_internal()
         self.compute_grid()
+
+    def _validate(self) -> None:
+        """Raise ``ValueError`` if any parameter is invalid or conflicting."""
+        # --- Basic positivity checks ----------------------------------------
+        if self.page_w <= 0 or self.page_h <= 0:
+            raise ValueError(
+                f"Page dimensions must be positive, got {self.page_w}×{self.page_h}mm."
+            )
+        if self.label_w <= 0 or self.label_h <= 0:
+            raise ValueError(
+                f"Label dimensions must be positive, got {self.label_w}×{self.label_h}mm."
+            )
+        if self.col_gap < 0:
+            raise ValueError(
+                f"Column gap must be >= 0, got {self.col_gap}mm."
+            )
+        if self.row_gap < 0:
+            raise ValueError(
+                f"Row gap must be >= 0, got {self.row_gap}mm."
+            )
+        if self.margin_x < 0 or self.margin_y < 0:
+            raise ValueError(
+                f"Margins must be >= 0, got margin_x={self.margin_x}mm, margin_y={self.margin_y}mm."
+            )
+
+        # --- Margin vs page size -------------------------------------------
+        if 2.0 * self.margin_x >= self.page_w:
+            raise ValueError(
+                f"Horizontal margins too large: 2×{self.margin_x}mm = {2*self.margin_x}mm "
+                f">= page width {self.page_w}mm. No space left for labels."
+            )
+        if 2.0 * self.margin_y >= self.page_h:
+            raise ValueError(
+                f"Vertical margins too large: 2×{self.margin_y}mm = {2*self.margin_y}mm "
+                f">= page height {self.page_h}mm. No space left for labels."
+            )
+
+        # --- Label fits on page (at least 1×1) ------------------------------
+        # When grid is set, margins may be auto-shrunk, so check against page
+        # size (worst case: 0 margins).  Otherwise check with current margins.
+        if self.grid is not None:
+            check_w = self.page_w
+            check_h = self.page_h
+        else:
+            check_w = self.page_w - 2.0 * self.margin_x
+            check_h = self.page_h - 2.0 * self.margin_y
+        if self.label_w > check_w:
+            raise ValueError(
+                f"Label width {self.label_w}mm exceeds available width {check_w:.1f}mm. "
+                f"Even a single column won't fit."
+            )
+        if self.label_h > check_h:
+            raise ValueError(
+                f"Label height {self.label_h}mm exceeds available height {check_h:.1f}mm. "
+                f"Even a single row won't fit."
+            )
 
     # -----------------------------------------------------------------------
     # Computation helpers
@@ -161,16 +240,61 @@ class Layout:
 
         Labels are centred horizontally on the page when the available width
         is not an exact multiple of ``(label_w + col_gap)``.
+
+        If ``self.grid`` is set, the specified ``(cols, rows)`` are used
+        instead of auto-computing.  A ``ValueError`` is raised if the manual
+        grid doesn't fit on the page.
         """
         available_w: float = self.page_w - 2.0 * self.margin_x
         available_h: float = self.page_h - 2.0 * self.margin_y
 
-        self.cols = max(1, int(math.floor(
-            (available_w + self.col_gap) / (self.label_w + self.col_gap)
-        )))
-        self.rows = max(1, int(math.floor(
-            (available_h + self.row_gap) / (self.label_h + self.row_gap)
-        )))
+        if self.grid is not None:
+            # Manual grid: use specified cols/rows and validate
+            manual_cols, manual_rows = self.grid
+            if manual_cols < 1 or manual_rows < 1:
+                raise ValueError(
+                    f"Grid dimensions must be at least 1x1, got {manual_cols}x{manual_rows}."
+                )
+
+            # Calculate space needed by the grid
+            needed_w = manual_cols * self.label_w + (manual_cols - 1) * self.col_gap
+            needed_h = manual_rows * self.label_h + (manual_rows - 1) * self.row_gap
+
+            # Auto-shrink margins if grid doesn't fit — the grid takes priority
+            # over the default margins.  Only error if even 0-margin won't work.
+            if needed_w > self.page_w + 1e-9:
+                raise ValueError(
+                    f"Grid {manual_cols}x{manual_rows} is too wide ({needed_w:.1f}mm) "
+                    f"for page width {self.page_w}mm even with zero margins."
+                )
+            if needed_h > self.page_h + 1e-9:
+                raise ValueError(
+                    f"Grid {manual_cols}x{manual_rows} is too tall ({needed_h:.1f}mm) "
+                    f"for page height {self.page_h}mm even with zero margins."
+                )
+
+            # Shrink margins to fit (center the grid on the page)
+            needed_margin_x = max(0.0, (self.page_w - needed_w) / 2.0)
+            needed_margin_y = max(0.0, (self.page_h - needed_h) / 2.0)
+            if needed_margin_x < self.margin_x:
+                self.margin_x = needed_margin_x
+            if needed_margin_y < self.margin_y:
+                self.margin_y = needed_margin_y
+
+            # Recalculate available space with potentially reduced margins
+            available_w = self.page_w - 2.0 * self.margin_x
+            available_h = self.page_h - 2.0 * self.margin_y
+
+            self.cols = manual_cols
+            self.rows = manual_rows
+        else:
+            # Auto-compute: maximise labels that fit
+            self.cols = max(1, int(math.floor(
+                (available_w + self.col_gap) / (self.label_w + self.col_gap)
+            )))
+            self.rows = max(1, int(math.floor(
+                (available_h + self.row_gap) / (self.label_h + self.row_gap)
+            )))
 
         # Horizontal centre offset so that the block of labels is centred.
         center_offset_x: float = (
@@ -198,13 +322,14 @@ class Layout:
         The dictionary may contain any combination of the following keys:
 
         * ``label_size`` — preset name (e.g. ``"50x30"``) or ``"WxH"`` string
+        * ``page_size`` — page preset (e.g. ``"A4"``, ``"Letter"``) or ``"WxH"`` string
         * ``label_w``, ``label_h``, ``label_rx`` — label dimensions
         * ``col_gap``, ``row_gap`` — inter-label spacing
         * ``margin`` — uniform margin (sets both ``margin_x`` and ``margin_y``)
         * ``margin_x``, ``margin_y`` — per-axis margins (override ``margin``)
         * ``radius`` — alias for ``label_rx``
         * ``font``, ``font_family`` — font family string
-        * ``page_w``, ``page_h`` — page dimensions
+        * ``page_w``, ``page_h`` — page dimensions (overridden by ``page_size``)
         * ``level_colors`` — list of ``(low, high, hex)`` tuples
         * ``cx``, ``cy``, ``cr``, ``rx``, ``vx``, ``top_y``, ``author_lh``,
           ``title_lh``, ``points_y``, ``quiz_y`` — explicit internal coords
@@ -228,6 +353,13 @@ class Layout:
         if label_size is not None:
             preset = _parse_label_size_value(str(label_size))
             layout_kwargs.update(preset)
+
+        # --- 1b. Load page size preset if page_size is specified -------------
+        page_size = config.get("page_size")
+        if page_size is not None:
+            page_w, page_h = _parse_page_size_value(str(page_size))
+            layout_kwargs["page_w"] = page_w
+            layout_kwargs["page_h"] = page_h
 
         # --- 2. Apply explicit scalar overrides ------------------------------
         _SCALAR_KEYS = (
@@ -258,12 +390,32 @@ class Layout:
         if config.get("level_colors") is not None:
             layout_kwargs["level_colors"] = config["level_colors"]
 
-        # --- 5. Filter to valid dataclass fields and create instance ---------
+        # --- 5. Parse grid if specified ----------------------------------------
+        if config.get("grid") is not None:
+            grid_val = config["grid"]
+            if isinstance(grid_val, str):
+                # Parse "COLSxROWS" format
+                try:
+                    parts = grid_val.lower().split("x")
+                    if len(parts) != 2:
+                        raise ValueError
+                    gc, gr = int(parts[0]), int(parts[1])
+                    if gc < 1 or gr < 1:
+                        raise ValueError
+                    layout_kwargs["grid"] = (gc, gr)
+                except (ValueError, AttributeError):
+                    raise ValueError(
+                        f"Invalid grid: '{grid_val}'. Expected format: COLSxROWS (e.g. '4x9')."
+                    )
+            elif isinstance(grid_val, (list, tuple)) and len(grid_val) == 2:
+                layout_kwargs["grid"] = (int(grid_val[0]), int(grid_val[1]))
+
+        # --- 6. Filter to valid dataclass fields and create instance ---------
         valid_fields = {f.name for f in dataclasses.fields(cls)}
         filtered = {k: v for k, v in layout_kwargs.items() if k in valid_fields}
         layout = cls(**filtered)
 
-        # --- 6. Override internal coords if explicitly provided ---------------
+        # --- 7. Override internal coords if explicitly provided ---------------
         _INTERNAL_KEYS = (
             "cx", "cy", "cr", "rx", "vx", "top_y",
             "author_lh", "title_lh", "points_y", "quiz_y",
@@ -314,4 +466,45 @@ def _parse_label_size_value(size_str: str) -> Dict[str, Any]:
             f"Invalid label size: '{size_str}'. "
             f"Use a preset ({', '.join(sorted(PRESETS.keys()))}) "
             f"or format WxH (e.g. '70x37')."
+        )
+
+
+def _parse_page_size_value(size_str: str) -> Tuple[float, float]:
+    """Resolve a page-size string to ``(width, height)`` in mm.
+
+    Parameters
+    ----------
+    size_str:
+        Either a preset name (e.g. ``"A4"``, ``"Letter"``) or a custom
+        ``"WxH"`` string (e.g. ``"210x297"``).
+
+    Returns
+    -------
+    tuple[float, float]
+        ``(page_w, page_h)`` in millimetres.
+
+    Raises
+    ------
+    ValueError
+        If *size_str* is not a valid preset or ``WxH`` format.
+    """
+    # Case-insensitive lookup (normalise to canonical casing)
+    key = size_str.strip()
+    for preset_name in PAGE_PRESETS:
+        if key.lower() == preset_name.lower():
+            return PAGE_PRESETS[preset_name]
+
+    try:
+        parts = key.lower().split("x")
+        if len(parts) != 2:
+            raise ValueError
+        w, h = float(parts[0]), float(parts[1])
+        if w <= 0 or h <= 0:
+            raise ValueError
+        return (w, h)
+    except (ValueError, AttributeError):
+        raise ValueError(
+            f"Invalid page size: '{size_str}'. "
+            f"Use a preset ({', '.join(sorted(PAGE_PRESETS.keys()))}) "
+            f"or format WxH (e.g. '210x297')."
         )

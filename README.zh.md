@@ -13,8 +13,9 @@
   - [选项](#选项)
   - [示例](#示例)
 - [标签尺寸预设](#标签尺寸预设)
+- [页面尺寸预设](#页面尺寸预设)
 - [配置文件](#配置文件)
-- [Excel 格式要求](#excel-格式要求)
+- [输入格式（Excel 和 CSV）](#输入格式excel-和-csv)
 - [AR 等级颜色对照表](#ar-等级颜色对照表)
 - [自定义颜色方案](#自定义颜色方案)
 - [开发指南](#开发指南)
@@ -23,14 +24,18 @@
 ## 功能特点
 
 - **灵活标签尺寸**：4 种内置预设（50x30、70x37、63x38、99x38）或通过 `--label-size` 自定义尺寸
+- **多种页面尺寸**：7 种预设（A4、A5、A3、Letter、Legal、B5、B4）或通过 `--page-size` 自定义尺寸
 - **自动网格布局**：根据标签尺寸自动计算列数、行数和居中位置
+- **手动网格覆盖**：通过 `--grid` 指定精确的列×行（如 `4x9`）
 - **可调间距**：列间距（`--col-gap`）、行间距（`--row-gap`）、页边距（`--margin`）
+- **CSV 和 Excel 输入**：支持 `.csv` 和 `.xlsx` 文件（根据扩展名自动检测）
 - **AR 标准颜色编码**：12 个颜色区间，从黄色（0.1–1.5）到棕色（6.6+）
 - **自定义颜色方案**：通过 `--colors` 覆盖 AR 颜色
 - **黑白模式**：`--bw` 节省墨水
 - **裁剪边框**：`--with-border` 添加细实线边框，便于手动裁剪
 - **排版控制**：自定义字体（`--font`）和圆角半径（`--radius`）
 - **YAML/JSON 配置**：通过 `--config` 使用可复用的配置文件
+- **配置文件生成**：`--generate-config` 快速生成示例配置文件
 - **智能文本截断**：书名支持 2 行换行 + 省略号；作者名单行显示
 - **作者优先布局**：作者名在书名上方，方便按作者排序整理书籍
 - **打印就绪 HTML**：内置 `@page` CSS 可直接打印；`--scale` 控制屏幕预览
@@ -88,10 +93,11 @@ ar-book-labels <excel文件> [选项]
 
 | 选项 | 默认值 | 说明 |
 |------|--------|------|
-| `excel` | — | Excel 文件路径（.xlsx） |
+| `excel` | — | Excel（.xlsx）或 CSV（.csv）文件路径 |
 | `-o, --output` | `AR_Book_Labels.html` | 输出 HTML 文件路径 |
-| `-s, --sheet` | 第一个工作表 | 要读取的工作表名称（默认第一个） |
+| `-s, --sheet` | 第一个工作表 | 要读取的工作表名称（默认第一个，仅 Excel） |
 | `--start-row` | `2` | 数据开始的行号（1 = 表头行） |
+| `--generate-config` | — | 生成示例配置文件并退出（根据扩展名生成 YAML 或 JSON） |
 | `--template` | — | 将参考 Excel 模板复制到当前目录并退出 |
 | `-V, --version` | — | 显示版本号并退出 |
 
@@ -110,6 +116,8 @@ ar-book-labels <excel文件> [选项]
 | 选项 | 默认值 | 说明 |
 |------|--------|------|
 | `--label-size` | `50x30` | 标签尺寸：预设名（`50x30`、`70x37`、`63x38`、`99x38`）或 `宽x高`（mm） |
+| `--page-size` | `A4` | 页面尺寸：预设名（`A4`、`A5`、`A3`、`Letter`、`Legal`、`B5`、`B4`）或 `宽x高`（mm） |
+| `--grid` | 自动 | 手动网格布局：`列x行`（如 `4x9`、`3x7`），超出页面时报错 |
 | `--col-gap` | `2` | 列间距（mm） |
 | `--row-gap` | `0` | 行间距（mm） |
 | `--margin` | `13.5` | 页边距（mm，四边统一） |
@@ -137,6 +145,13 @@ ar-book-labels <excel文件> [选项]
 # 基本用法（默认 50x30mm 标签）
 ar-book-labels my_books.xlsx
 
+# CSV 输入（根据扩展名自动检测）
+ar-book-labels my_books.csv -o labels.html
+
+# 生成示例配置文件
+ar-book-labels --generate-config my_config.yaml
+ar-book-labels --generate-config my_config.json
+
 # 自定义输出路径和工作表名
 ar-book-labels my_books.xlsx -o output/labels.html -s "图书数据"
 
@@ -148,6 +163,18 @@ ar-book-labels my_books.xlsx --label-size 63x38
 
 # 自定义尺寸 + 更宽间距
 ar-book-labels my_books.xlsx --label-size 60x40 --col-gap 3 --row-gap 2
+
+# Letter 纸张（美国标准）
+ar-book-labels my_books.xlsx --page-size Letter
+
+# A5 纸张 + 手动 2×5 网格
+ar-book-labels my_books.xlsx --page-size A5 --grid 2x5
+
+# 手动网格布局（4 列 × 9 行）
+ar-book-labels my_books.xlsx --grid 4x9
+
+# 自定义页面尺寸（宽x高，mm）
+ar-book-labels my_books.xlsx --page-size 150x200
 
 # 更紧的页边距（10mm）
 ar-book-labels my_books.xlsx --margin 10
@@ -184,6 +211,22 @@ ar-book-labels --template
 
 使用自定义或预设尺寸时，网格（列数、行数）自动计算，标签在页面上水平居中。
 
+## 页面尺寸预设
+
+| 预设 | 尺寸（宽 × 高） | 说明 |
+|------|----------------|------|
+| `A4` | 210mm × 297mm | 默认。国际标准纸张。 |
+| `A5` | 148mm × 210mm | A4 的一半。每页标签更少。 |
+| `A3` | 297mm × 420mm | A4 的两倍。每页标签更多。 |
+| `Letter` | 215.9mm × 279.4mm | 美国标准。比 A4 略宽略短。 |
+| `Legal` | 215.9mm × 355.6mm | 美国法律用纸。比 Letter 更长。 |
+| `B5` | 176mm × 250mm | 日本和部分欧洲国家常用。 |
+| `B4` | 250mm × 353mm | 较大格式。 |
+
+也支持自定义页面尺寸：`--page-size 宽x高`（单位 mm）。
+
+当标签网格无法适配所选页面尺寸时（如太宽的标签放在小页面上），工具会报告清晰的错误并提供修复建议。
+
 ## 配置文件
 
 如需复用设置，可创建 YAML 或 JSON 配置文件：
@@ -191,6 +234,8 @@ ar-book-labels --template
 ```yaml
 # ar-book-labels.yaml
 label_size: "50x30"
+page_size: "A4"        # A4、A5、A3、Letter、Legal、B5、B4，或 宽x高
+# grid: "4x9"          # 手动网格覆盖（列x行）
 col_gap: 2
 row_gap: 0
 margin: 13.5
@@ -217,7 +262,9 @@ pip install ar-book-labels[yaml]
 
 JSON 配置文件无需额外依赖即可使用。
 
-## Excel 格式要求
+## 输入格式（Excel 和 CSV）
+
+工具支持 Excel（`.xlsx`）和 CSV（`.csv`）文件，根据文件扩展名自动检测格式。
 
 表格必须包含以下列（默认列名如下；可通过 `--col-*` 选项自定义列名映射）：
 
